@@ -1,0 +1,1897 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BOMBANANA // 雙人極限拆彈協議</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+    body {
+      font-family: 'Noto Sans TC', 'JetBrains Mono', sans-serif;
+      background-color: #090d16;
+      color: #e2e8f0;
+      user-select: none;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .led-glow-red { box-shadow: 0 0 14px #ef4444; }
+    .led-glow-green { box-shadow: 0 0 14px #22c55e; }
+    .led-glow-yellow { box-shadow: 0 0 14px #eab308; }
+    .led-glow-blue { box-shadow: 0 0 14px #3b82f6; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
+    .shake { animation: shake 0.25s ease-in-out 2; }
+    @keyframes pulseBorder {
+      0%, 100% { border-color: #f43f5e; box-shadow: 0 0 20px rgba(244,63,94,0.4); }
+      50% { border-color: #facc15; box-shadow: 0 0 25px rgba(250,204,21,0.5); }
+    }
+    .chaos-alert { animation: pulseBorder 0.8s infinite; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 頂部狀態列 -->
+  <header class="bg-slate-900/90 border-b border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl">🍌</span>
+      <h1 class="font-black tracking-wider text-yellow-400 text-lg">BOMBANANA <span class="text-xs text-slate-400 font-normal">2P CO-OP EDITION</span></h1>
+    </div>
+    <div id="topControls" class="hidden flex items-center gap-3">
+      <span id="roomBadge" class="mono text-xs bg-slate-800 px-2.5 py-1 rounded border border-slate-700 text-cyan-400">ROOM: ----</span>
+      <button id="switchRoleBtn" onclick="toggleSoloRole()" class="hidden text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 px-3 py-1 rounded font-bold">
+        切換視角 (單人測試)
+      </button>
+      <button onclick="leaveRoom()" class="text-xs bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 px-2.5 py-1 rounded">
+        離開房間
+      </button>
+    </div>
+  </header>
+
+  <!-- 階段 1：大廳畫面（建立或加入房間） -->
+  <main id="lobbyView" class="flex-1 flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
+      <div class="text-center space-y-1">
+        <div class="text-4xl mb-2">💣🍌</div>
+        <h2 class="text-xl font-black text-white">雙人高壓拆彈連線</h2>
+        <p class="text-xs text-slate-400">先建立或加入房間，進房後再設定模式、模組數並分配角色</p>
+      </div>
+
+      <div class="space-y-3">
+        <button onclick="createOnlineRoom()" class="w-full py-3.5 rounded-xl bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-sm shadow-lg transition">
+          建立雙人連線房間
+        </button>
+        <div class="flex gap-2">
+          <input id="joinCodeInput" maxlength="4" placeholder="輸入 4 碼房號" class="mono uppercase flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-center text-sm tracking-widest text-white" />
+          <button onclick="joinOnlineRoom()" class="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm">
+            加入房間
+          </button>
+        </div>
+      </div>
+
+      <div class="border-t border-slate-800 pt-4">
+        <button onclick="startSoloPreview()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700">
+          單人模擬測試模式 (無需 Firebase，可隨時切換雙重視角試玩)
+        </button>
+      </div>
+      <p id="lobbyMsg" class="text-center text-xs text-rose-400 min-h-[16px]"></p>
+    </div>
+  </main>
+
+  <!-- 階段 2：待機室畫面（選擇遊戲模式、難度模組數 4-6、角色） -->
+  <section id="waitingRoomView" class="hidden flex-1 flex items-center justify-center p-4">
+    <div class="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <div class="text-xs text-slate-400">連線房號（傳給搭檔輸入加入）</div>
+          <div class="flex items-center gap-2 mt-1">
+            <span id="waitingRoomCode" class="mono text-3xl font-black tracking-[0.2em] text-yellow-400 bg-slate-950 px-4 py-1.5 rounded-xl border border-slate-700">----</span>
+            <button onclick="copyRoomCode()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-2 rounded-xl text-slate-200 font-bold">
+              複製
+            </button>
+          </div>
+        </div>
+        <div class="bg-slate-950 border border-slate-800 px-4 py-2.5 rounded-xl text-right">
+          <div class="text-[11px] text-slate-400">拆彈倒數時間</div>
+          <div class="mono text-xl font-black text-rose-400">03:00 <span class="text-xs font-normal text-slate-400">(固定)</span></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1.5 font-bold">1. 選擇遊玩模式</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="modeNormalBtn" onclick="updateRoomConfig('mode', 'normal')" class="py-2 px-3 rounded-lg border-2 border-emerald-400 bg-emerald-400/15 text-emerald-300 font-black text-xs">
+              🛡️ 正常模式
+            </button>
+            <button id="modeChaosBtn" onclick="updateRoomConfig('mode', 'chaos')" class="py-2 px-3 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 font-bold text-xs">
+              🔥 混亂模式
+            </button>
+          </div>
+          <p id="modeDescText" class="text-[11px] text-slate-400 mt-1.5">專注破解標準謎題，無額外中斷干擾。</p>
+        </div>
+
+        <div>
+          <label class="block text-xs text-slate-400 mb-1.5 font-bold">2. 選擇遊玩難度 / 模組數量 (4–6 個)</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button id="countBtn4" onclick="updateRoomConfig('moduleCount', 4)" class="py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-black text-xs">簡單 (4)</button>
+            <button id="countBtn5" onclick="updateRoomConfig('moduleCount', 5)" class="py-2 rounded-lg border-2 border-cyan-400 bg-cyan-400/15 text-cyan-300 font-black text-xs">標準 (5)</button>
+            <button id="countBtn6" onclick="updateRoomConfig('moduleCount', 6)" class="py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-black text-xs">困難 (6)</button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5">從 11 大標準模組中隨機抽出指定數量。</p>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <div class="text-xs text-slate-400 text-center font-bold">3. 各自點擊認領角色（可隨時點擊取消互換）</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div id="cardDefuser" onclick="claimRole('defuser')" class="cursor-pointer rounded-2xl border-2 border-slate-700 bg-slate-800/50 p-4 text-center space-y-2 transition">
+            <div class="text-3xl">🔧💣</div>
+            <h3 class="font-black text-base text-white">拆彈員 (Defuser)</h3>
+            <p class="text-xs text-slate-400">面對炸彈面板，描述顏色、點字、音效並執行操作。</p>
+            <div id="statusDefuser" class="pt-1"></div>
+          </div>
+
+          <div id="cardExpert" onclick="claimRole('expert')" class="cursor-pointer rounded-2xl border-2 border-slate-700 bg-slate-800/50 p-4 text-center space-y-2 transition">
+            <div class="text-3xl">📖🧠</div>
+            <h3 class="font-black text-base text-white">手冊員 (Expert)</h3>
+            <p class="text-xs text-slate-400">翻閱一頁一模組的機密拆彈手冊，下達精準指令。</p>
+            <div id="statusExpert" class="pt-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <button id="startMissionBtn" onclick="startMission()" disabled class="w-full py-3.5 rounded-xl bg-slate-800 text-slate-500 font-black text-sm transition cursor-not-allowed">
+          等待雙方都選好角色後即可開始...
+        </button>
+        <p id="waitingHintText" class="text-center text-xs text-slate-400">目前尚有角色未認領</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 階段 3A：遊戲主畫面（拆彈員視角） -->
+  <section id="defuserView" class="hidden flex-1 max-w-6xl w-full mx-auto p-4 space-y-4">
+    <div class="bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+      <div class="flex items-center gap-4">
+        <div class="bg-black border border-slate-700 px-4 py-2 rounded-xl text-center">
+          <div class="text-[10px] text-slate-400 flex items-center justify-center gap-1">
+            <span>REMAINING TIME</span>
+            <span id="overclockBadge" class="hidden text-[9px] bg-rose-600 text-white px-1 rounded font-black animate-pulse">2X SPEED</span>
+          </div>
+          <div id="timerDisplay" class="mono text-3xl font-black text-rose-500 tracking-wider">03:00</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">容錯失誤 (STRIKES)</div>
+          <div id="strikesDisplay" class="flex gap-2 mt-1"></div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3 text-xs">
+        <div class="bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl">
+          <span class="text-slate-400 block text-[10px]">遊玩模式</span>
+          <span id="hudModeDisplay" class="font-black text-emerald-400">🛡️ 正常模式</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl">
+          <span class="text-slate-400 block text-[10px]">已解除進度</span>
+          <span id="hudProgressDisplay" class="mono font-black text-yellow-300">0 / 5</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="chaosBanner" class="hidden bg-rose-950/90 border-2 rounded-2xl p-4 chaos-alert flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <span id="chaosIcon" class="text-3xl">🚨</span>
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="chaosTitle" class="font-black text-yellow-300 text-base">混亂干擾事件！</span>
+            <span id="chaosTimerBadge" class="mono text-xs bg-rose-600 text-white px-2 py-0.5 rounded font-black">15s</span>
+          </div>
+          <p id="chaosDesc" class="text-xs text-rose-200 mt-0.5">必須在倒數歸零前完成排除，否則直接記一次失誤！</p>
+        </div>
+      </div>
+      <div id="chaosActionArea" class="flex flex-wrap items-center gap-2"></div>
+    </div>
+
+    <div id="modulesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </section>
+
+  <!-- 階段 3B：遊戲主畫面（手冊員視角：一頁一模組翻頁設計） -->
+  <section id="expertView" class="hidden flex-1 max-w-4xl w-full mx-auto p-4 space-y-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 class="font-black text-amber-300 text-base">📖 BOMBANANA 機密拆彈手冊（單頁翻閱版）</h2>
+          <p class="text-xs text-slate-400">上方可直接點選模組頁籤，或使用左右按鈕翻頁對照規則</p>
+        </div>
+        <div class="mono text-xs bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">
+          任務進度：<span id="expertProgressText" class="text-emerald-400 font-bold">0 / 5</span>
+        </div>
+      </div>
+
+      <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5">
+        <div class="text-[10px] text-slate-400 mb-1.5 font-bold">點字數字 1～9 視覺對照表（2×2 左四點編碼）：</div>
+        <div id="brailleLegendBar" class="grid grid-cols-5 sm:grid-cols-9 gap-1.5"></div>
+      </div>
+    </div>
+
+    <div id="manualTabsBar" class="flex flex-wrap gap-1.5 bg-slate-900/60 p-2 rounded-xl border border-slate-800"></div>
+
+    <div class="bg-slate-900 border-2 border-slate-700 rounded-2xl p-5 shadow-2xl min-h-[340px] flex flex-col justify-between">
+      <div id="manualPageContent" class="space-y-4"></div>
+
+      <div class="pt-5 mt-6 border-t border-slate-800 flex items-center justify-between">
+        <button onclick="turnManualPage(-1)" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700">
+          ◀ 上一頁
+        </button>
+        <span id="manualPageIndicator" class="mono text-xs text-slate-400 font-bold">第 1 / 11 頁</span>
+        <button onclick="turnManualPage(1)" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700">
+          下一頁 ▶
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 結算彈窗（點再來一局直接跳回選擇遊戲難度模式的頁面） -->
+  <div id="endModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border-2 border-slate-700 rounded-2xl max-w-md w-full p-6 text-center space-y-5 shadow-2xl">
+      <div id="endIcon" class="text-5xl">🎉</div>
+      <div>
+        <h2 id="endTitle" class="text-2xl font-black text-emerald-400">拆彈成功！</h2>
+        <p id="endDesc" class="text-sm text-slate-300 mt-1">剩餘時間：01:12 ｜ 累計失誤：0 次</p>
+      </div>
+
+      <div class="space-y-2.5 pt-2">
+        <button onclick="returnToSetupPage(false)" class="w-full py-3.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-sm shadow transition">
+          🔄 再來一局（返回選擇遊戲難度／模式）
+        </button>
+        <button onclick="returnToSetupPage(true)" class="w-full py-3.5 rounded-xl bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-sm shadow transition">
+          ⇄ 再來一局並自動互換角色
+        </button>
+        <button onclick="leaveRoom()" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 text-xs font-bold">
+          離開房間返回主大廳
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // =========================================================================
+    // 【請在此貼上你獨立建立的 bombanana 專案 Firebase 設定金鑰】
+    // =========================================================================
+    const STANDALONE_FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCVaTPh3HPgVdy6hheNwihEWsFCgH7Mlwo",
+       authDomain: "bomegg-5e1f0.firebaseapp.com",
+       projectId: "bomegg-5e1f0",
+       storageBucket: "bomegg-5e1f0.firebasestorage.app",
+       messagingSenderId: "899783837392",
+       appId: "1:899783837392:web:bcd3cbdcea8064b21300d5",
+       measurementId: "G-3KEZGYERKS"
+    };
+
+    let db = null;
+    if (STANDALONE_FIREBASE_CONFIG.apiKey) {
+      const app = initializeApp(STANDALONE_FIREBASE_CONFIG);
+      db = getFirestore(app);
+    }
+
+    // =========================================================================
+    // 1. 音效合成引擎（按鈕蜂鳴 + 鋼琴音階 + 摩斯長短音）
+    // =========================================================================
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playTone(freq = 520, duration = 0.1, type = 'sine', vol = 0.08) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    const PIANO_FREQS = {
+      C: 261.63, D: 293.66, E: 329.63, F: 349.23, G: 392.00, A: 440.00, B: 493.88
+    };
+
+    const NOTE_TO_NUM = { C: 1, D: 2, E: 3, F: 4, G: 5, A: 6, B: 7 };
+
+    const COLOR_META = {
+      red: { label: '🔴 紅色', short: '紅', textClass: 'text-rose-400', bgClass: 'bg-rose-500' },
+      blue: { label: '🔵 藍色', short: '藍', textClass: 'text-blue-400', bgClass: 'bg-blue-500' },
+      green: { label: '🟢 綠色', short: '綠', textClass: 'text-emerald-400', bgClass: 'bg-emerald-500' },
+      yellow: { label: '🟡 黃色', short: '黃', textClass: 'text-yellow-300', bgClass: 'bg-yellow-400' }
+    };
+
+    // =========================================================================
+    // 2. 固定全排列 Cable 查詢表（3 條 24 種 + 4 條 24 種，永久不隨局變化）
+    // =========================================================================
+    function getPermutations(arr, k) {
+      if (k === 1) return arr.map(v => [v]);
+      const res = [];
+      arr.forEach((v, i) => {
+        const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+        getPermutations(rest, k - 1).forEach(sub => res.push([v, ...sub]));
+      });
+      return res;
+    }
+
+    const CABLE_FIXED_LOOKUP = {};
+    const ALL_COLORS = ['red', 'blue', 'green', 'yellow'];
+
+    [3, 4].forEach(len => {
+      getPermutations(ALL_COLORS, len).forEach((perm, permIdx) => {
+        const key = perm.join('-');
+        const mapByLight = {};
+        ALL_COLORS.forEach((lightCol, lIdx) => {
+          const pickIdx = (permIdx + lIdx * 3 + (lightCol === perm[0] ? 1 : 0)) % len;
+          mapByLight[lightCol] = perm[pickIdx];
+        });
+        CABLE_FIXED_LOOKUP[key] = {
+          wires: perm,
+          byLight: mapByLight
+        };
+      });
+    });
+
+    const CABLE_3_LIST = Object.values(CABLE_FIXED_LOOKUP).filter(item => item.wires.length === 3);
+    const CABLE_4_LIST = Object.values(CABLE_FIXED_LOOKUP).filter(item => item.wires.length === 4);
+
+    // =========================================================================
+    // 3. 其餘官方原版標準模組資料庫與對照表
+    // =========================================================================
+    const BRAILLE_MAP = {
+      1: [1, 0, 0, 0],
+      2: [1, 0, 1, 0],
+      3: [1, 1, 0, 0],
+      4: [1, 1, 0, 1],
+      5: [1, 0, 0, 1],
+      6: [1, 1, 1, 0],
+      7: [1, 1, 1, 1],
+      8: [1, 0, 1, 1],
+      9: [0, 1, 1, 0]
+    };
+
+    function renderBrailleBox(num, sizeClass = "w-7 h-7", dotClass = "w-2 h-2") {
+      const dots = BRAILLE_MAP[num] || [0,0,0,0];
+      return `<div class="${sizeClass} rounded bg-slate-200 border border-slate-400 p-1 grid grid-cols-2 gap-0.5 items-center justify-items-center inline-grid">
+        ${dots.map(d => `<span class="${dotClass} rounded-full ${d ? 'bg-slate-950' : 'border border-slate-400'}"></span>`).join('')}
+      </div>`;
+    }
+
+    const DIRECTION_TABLE = {
+      1: { red: 'up', blue: 'right', green: 'left', yellow: 'down' },
+      2: { red: 'right', blue: 'down', green: 'up', yellow: 'left' },
+      3: { red: 'left', blue: 'up', green: 'right', yellow: 'up' },
+      4: { red: 'up', blue: 'right', green: 'left', yellow: 'down' },
+      5: { red: 'left', blue: 'up', green: 'right', yellow: 'up' },
+      6: { red: 'up', blue: 'left', green: 'down', yellow: 'right' },
+      7: { red: 'right', blue: 'down', green: 'up', yellow: 'left' },
+      8: { red: 'up', blue: 'left', green: 'down', yellow: 'right' },
+      9: { red: 'down', blue: 'up', green: 'left', yellow: 'right' }
+    };
+
+    const CALC_STEP2_TABLE = {
+      red: { odd: '3', even: '5' },
+      blue: { odd: '0', even: '1' },
+      green: { odd: '2', even: '9' },
+      yellow: { odd: '7', even: '0' }
+    };
+
+    const PIANO_TABLE = {
+      1: { red: ['C','D','E','C'], yellow: ['C','E','G','C'], green: ['C','D','E','F'], blue: ['E','E','F','G'] },
+      2: { red: ['G','E','E','F'], yellow: ['F','A','C','F'], green: ['G','A','B','C'], blue: ['A','E','A','B'] },
+      3: { red: ['C','C','G','G'], yellow: ['G','B','D','G'], green: ['E','F','G','A'], blue: ['C','D','C','E'] },
+      4: { red: ['E','D','C','D'], yellow: ['E','C','D','G'], green: ['D','F','A','D'], blue: ['G','C','G','E'] },
+      5: { red: ['A','B','C','A'], yellow: ['A','G','A','F'], green: ['C','G','C','G'], blue: ['B','G','A','B'] },
+      6: { red: ['G','F','E','D'], yellow: ['B','A','G','F'], green: ['F','E','D','C'], blue: ['D','E','D','C'] },
+      7: { red: ['B','F','G','A'], yellow: ['D','C','B','A'], green: ['G','B','A','G'], blue: ['A','B','A','G'] }
+    };
+
+    const SOUNDBOARD_TABLE = {
+      1: { red: [1,1,0,1,0,0,1,0,1], blue: [1,0,1,1,1,0,0,1,0], green: [1,0,0,0,1,0,0,1,1], yellow: [0,1,0,0,0,1,0,1,1] },
+      2: { red: [0,1,0,0,0,1,1,0,1], blue: [1,0,0,1,0,1,0,0,1], green: [0,1,1,1,0,0,0,1,0], yellow: [1,1,0,0,1,0,1,0,1] },
+      3: { red: [0,0,1,0,1,0,1,0,0], blue: [0,1,0,1,1,1,0,0,0], green: [1,0,1,1,1,0,1,0,0], yellow: [1,0,1,0,1,0,1,0,0] },
+      4: { red: [1,1,0,1,0,1,0,1,0], blue: [0,0,1,0,1,0,0,1,0], green: [1,0,0,1,0,1,1,1,0], yellow: [0,1,1,1,0,0,0,1,0] },
+      5: { red: [1,1,1,1,0,1,0,0,1], blue: [0,1,1,0,0,1,1,0,1], green: [1,1,0,0,0,1,1,0,1], yellow: [0,0,1,1,1,1,0,0,0] },
+      6: { red: [0,1,0,1,1,0,0,0,0], blue: [1,0,0,1,1,1,1,0,1], green: [1,0,0,1,1,1,1,1,1], yellow: [1,0,1,1,1,0,0,1,1] },
+      7: { red: [1,0,0,0,0,1,0,1,1], blue: [1,0,1,0,1,1,1,1,0], green: [1,1,1,1,0,1,0,1,0], yellow: [1,0,0,0,1,0,0,1,1] },
+      8: { red: [0,1,1,1,1,1,1,0,1], blue: [1,1,0,0,1,0,1,0,1], green: [0,0,0,1,1,1,1,0,1], yellow: [0,1,0,1,1,1,1,0,1] },
+      9: { red: [1,1,1,0,0,1,1,1,0], blue: [0,0,1,1,1,1,0,1,1], green: [1,1,1,1,1,0,0,1,1], yellow: [1,1,1,0,1,0,0,1,1] }
+    };
+
+    const MONKEY_TABLE = {
+      red: ['blue', 'yellow', 'green', 'red'],
+      blue: ['yellow', 'green', 'red', 'green'],
+      green: ['red', 'blue', 'yellow', 'yellow'],
+      yellow: ['green', 'red', 'blue', 'blue']
+    };
+
+    const STANDARD_MORSE_DIGITS = [
+      { digit: 0, code: '—————' },
+      { digit: 1, code: '·————' },
+      { digit: 2, code: '··———' },
+      { digit: 3, code: '···——' },
+      { digit: 4, code: '····—' },
+      { digit: 5, code: '·····' },
+      { digit: 6, code: '—····' },
+      { digit: 7, code: '——···' },
+      { digit: 8, code: '———··' },
+      { digit: 9, code: '————·' }
+    ];
+
+    const MAZE_MAPS = {
+      1: ['0,1-1,1', '1,0-1,1', '2,1-2,2', '3,1-4,1', '1,2-1,3', '2,3-3,3', '0,3-0,4', '2,4-3,4'],
+      2: ['0,0-0,1', '1,1-2,1', '2,0-2,1', '3,1-3,2', '1,2-2,2', '0,3-1,3', '2,3-2,4', '3,3-4,3'],
+      3: ['1,0-2,0', '0,1-1,1', '2,1-3,1', '1,2-1,3', '2,2-3,2', '3,2-3,3', '1,4-2,4', '3,4-4,4'],
+      4: ['0,2-1,2', '1,1-1,2', '2,0-3,0', '3,1-4,1', '2,2-2,3', '1,3-2,3', '3,3-3,4', '0,4-1,4'],
+      5: ['1,0-1,1', '2,1-3,1', '0,2-0,3', '1,2-2,2', '3,2-4,2', '2,3-3,3', '1,3-1,4', '3,3-3,4'],
+      6: ['0,1-0,2', '1,0-2,0', '2,1-2,2', '3,0-3,1', '1,2-2,2', '3,2-4,2', '0,3-1,3', '2,3-2,4']
+    };
+
+    // =========================================================================
+    // 4. 房間狀態與炸彈資料生成器
+    // =========================================================================
+    const myPlayerId = 'P_' + Math.random().toString(36).substring(2, 10);
+    let myRole = null;
+    let isSolo = false;
+    let roomId = null;
+    let unsubscribeRoom = null;
+    let timerInterval = null;
+    let intervalsStarted = false;
+    let currentManualPageIdx = 0;
+    let manualCableFilter = 3;
+    let lastRenderedManualSignature = ''; // 用於判斷手冊內容是否有變，避免每秒重繪導致捲軸跳回頂部
+
+    let gameState = null;
+
+    function buildModuleInstance(type) {
+      const colors = ['red', 'blue', 'green', 'yellow'];
+      const randColor = () => colors[Math.floor(Math.random() * 4)];
+      const randDigit = () => Math.floor(1 + Math.random() * 9);
+
+      if (type === 'cable') {
+        const count = Math.random() < 0.5 ? 3 : 4;
+        const wires = [...colors].sort(() => Math.random() - 0.5).slice(0, count);
+        const light = randColor();
+        return { id: 'cable', name: 'Cable (電纜)', solved: false, count, light, wires, cut: wires.map(() => false) };
+      }
+
+      if (type === 'slider') {
+        const sliders = Array.from({ length: 4 }, () => ({ color: randColor(), dir: 'up' }));
+        return { id: 'slider', name: 'Color Slider (顏色滑桿)', solved: false, sliders };
+      }
+
+      if (type === 'direction') {
+        const stages = Array.from({ length: 4 }, () => ({
+          num: randDigit(),
+          light: randColor()
+        }));
+        return { id: 'direction', name: 'Direction (方向點字)', solved: false, stage: 0, stages };
+      }
+
+      if (type === 'calculator') {
+        const isAdd = Math.random() < 0.6;
+        let a, b, ans;
+        if (isAdd) {
+          a = Math.floor(10 + Math.random() * 50);
+          b = Math.floor(5 + Math.random() * 40);
+          ans = a + b;
+        } else {
+          a = Math.floor(30 + Math.random() * 65);
+          b = Math.floor(5 + Math.random() * (a - 2));
+          ans = a - b;
+        }
+        const light = randColor();
+        return { id: 'calculator', name: 'Calculator (計算機)', solved: false, expr: `${a} ${isAdd ? '+' : '-'} ${b}`, ans, light, step: 1, input: '' };
+      }
+
+      if (type === 'symbol') {
+        const icons = ['⚡', '☯', '☣', '♛', '★', '❄', '☀', '♞', '♫', '⚓', '⚙', '❖'];
+        const picked = [...icons].sort(() => Math.random() - 0.5).slice(0, 4);
+        const soundIdx = Math.floor(Math.random() * 4);
+        return { id: 'symbol', name: 'Symbol (發聲符號)', solved: false, stage: 1, icons: picked, soundIdx };
+      }
+
+      if (type === 'piano') {
+        const octave = Math.floor(1 + Math.random() * 7);
+        const light = randColor();
+        return { id: 'piano', name: 'Piano (鋼琴)', solved: false, octave, light, played: [] };
+      }
+
+      if (type === 'soundboard') {
+        const cells = Array.from({ length: 9 }, () => ({
+          num: randDigit(),
+          color: randColor(),
+          active: false
+        }));
+        const soundCellIdx = Math.floor(Math.random() * 9);
+        return { id: 'soundboard', name: 'Soundboard (音效板)', solved: false, cells, soundCellIdx };
+      }
+
+      if (type === 'switch') {
+        const shuffledColors = [...colors].sort(() => Math.random() - 0.5);
+        const switches = shuffledColors.map(c => ({
+          color: c,
+          num: randDigit(),
+          pos: 'down'
+        }));
+        return { id: 'switch', name: 'Switch (四連開關)', solved: false, switches };
+      }
+
+      if (type === 'maze') {
+        const mapId = Math.floor(1 + Math.random() * 6);
+        return { id: 'maze', name: 'Maze (盲眼迷宮)', solved: false, mapId, pos: { x: 0, y: 0 }, goal: { x: 4, y: 4 } };
+      }
+
+      if (type === 'morse') {
+        const stdIdx = Math.floor(Math.random() * 10);
+        return { id: 'morse', name: 'Morse (摩斯電碼)', solved: false, stdDigit: stdIdx, input: '' };
+      }
+
+      if (type === 'monkey') {
+        const seq = Array.from({ length: 4 }, () => randColor());
+        return { id: 'monkey', name: 'Monkey Says (猴子說)', solved: false, stage: 1, seq, inputIdx: 0 };
+      }
+    }
+
+    function generateNewBomb(mode, moduleCount) {
+      const manual = {
+        slider: {
+          red: Math.random() < 0.5 ? 'up' : 'down',
+          blue: Math.random() < 0.5 ? 'up' : 'down',
+          green: Math.random() < 0.5 ? 'up' : 'down',
+          yellow: Math.random() < 0.5 ? 'up' : 'down'
+        },
+        switchRules: [1, 2, 3, 4].sort(() => Math.random() - 0.5),
+        morseMap: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].sort(() => Math.random() - 0.5)
+      };
+
+      const allTypes = ['cable', 'slider', 'direction', 'calculator', 'symbol', 'piano', 'soundboard', 'switch', 'maze', 'morse', 'monkey'];
+      const pickedTypes = [...allTypes].sort(() => Math.random() - 0.5).slice(0, moduleCount);
+      const modules = pickedTypes.map(t => buildModuleInstance(t));
+
+      return {
+        status: 'waiting',
+        mode,
+        moduleCount,
+        roles: { defuser: null, expert: null },
+        timeLeft: 180,
+        strikes: 0,
+        maxStrikes: 3,
+        manual,
+        modules,
+        chaosEvent: null,
+        nextChaosIn: 24
+      };
+    }
+
+    // =========================================================================
+    // 5. 大廳與待機室控制
+    // =========================================================================
+    window.createOnlineRoom = async () => {
+      if (!db) {
+        document.getElementById('lobbyMsg').textContent = '尚未填入 Firebase 金鑰！請先點下方「單人模擬測試模式」試玩，或填入你的 Firebase 金鑰。';
+        return;
+      }
+      const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const data = generateNewBomb('normal', 5);
+      await setDoc(doc(db, 'bombanana_rooms', code), data);
+      isSolo = false;
+      enterRoom(code, data);
+    };
+
+    window.joinOnlineRoom = async () => {
+      if (!db) {
+        document.getElementById('lobbyMsg').textContent = '尚未設定 Firebase 金鑰，無法連線加入房間。';
+        return;
+      }
+      const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+      if (code.length !== 4) {
+        document.getElementById('lobbyMsg').textContent = '請輸入正確的 4 碼房號';
+        return;
+      }
+      const snap = await getDoc(doc(db, 'bombanana_rooms', code));
+      if (!snap.exists()) {
+        document.getElementById('lobbyMsg').textContent = '找不到此房間，請確認房號';
+        return;
+      }
+      isSolo = false;
+      enterRoom(code, snap.data());
+    };
+
+    window.startSoloPreview = () => {
+      isSolo = true;
+      myRole = 'defuser';
+      const data = generateNewBomb('normal', 5);
+      data.roles = { defuser: myPlayerId, expert: 'SOLO_PARTNER' };
+      enterRoom('SOLO', data);
+    };
+
+    window.toggleSoloRole = () => {
+      myRole = myRole === 'defuser' ? 'expert' : 'defuser';
+      lastRenderedManualSignature = '';
+      updateScreenByState();
+    };
+
+    window.copyRoomCode = () => {
+      if (!roomId) return;
+      navigator.clipboard?.writeText(roomId);
+      playTone(620, 0.06);
+      const hint = document.getElementById('waitingHintText');
+      if (hint) hint.textContent = `已複製房號 ${roomId}！`;
+    };
+
+    window.updateRoomConfig = async (key, val) => {
+      if (!gameState || gameState.status !== 'waiting') return;
+      playTone(540, 0.06);
+      const nextMode = key === 'mode' ? val : gameState.mode;
+      const nextCount = key === 'moduleCount' ? val : gameState.moduleCount;
+      const keepRoles = { ...gameState.roles };
+
+      const fresh = generateNewBomb(nextMode, nextCount);
+      fresh.roles = keepRoles;
+      gameState = fresh;
+      await syncState();
+    };
+
+    window.claimRole = async (role) => {
+      if (!gameState || gameState.status !== 'waiting') return;
+      if (isSolo) {
+        myRole = role;
+        updateScreenByState();
+        return;
+      }
+      const holder = gameState.roles[role];
+      if (holder && holder !== myPlayerId) {
+        playTone(180, 0.12, 'sawtooth');
+        return;
+      }
+      playTone(580, 0.07);
+      if (holder === myPlayerId) {
+        gameState.roles[role] = null;
+      } else {
+        if (gameState.roles.defuser === myPlayerId) gameState.roles.defuser = null;
+        if (gameState.roles.expert === myPlayerId) gameState.roles.expert = null;
+        gameState.roles[role] = myPlayerId;
+      }
+      await syncState();
+    };
+
+    window.startMission = async () => {
+      if (!gameState || gameState.status !== 'waiting') return;
+      if (!gameState.roles.defuser || !gameState.roles.expert) return;
+      playTone(660, 0.08);
+      setTimeout(() => playTone(880, 0.14), 90);
+      gameState.status = 'playing';
+      currentManualPageIdx = 0;
+      lastRenderedManualSignature = '';
+      await syncState();
+    };
+
+    window.returnToSetupPage = async (swapRoles) => {
+      if (!gameState) return;
+      document.getElementById('endModal').classList.add('hidden');
+      intervalsStarted = false;
+      clearInterval(timerInterval);
+      lastRenderedManualSignature = '';
+
+      const oldRoles = { ...gameState.roles };
+      const fresh = generateNewBomb(gameState.mode, gameState.moduleCount);
+      fresh.status = 'waiting';
+
+      if (isSolo) {
+        if (swapRoles) myRole = myRole === 'defuser' ? 'expert' : 'defuser';
+        fresh.roles = { defuser: myPlayerId, expert: 'SOLO_PARTNER' };
+      } else {
+        fresh.roles = swapRoles
+          ? { defuser: oldRoles.expert, expert: oldRoles.defuser }
+          : oldRoles;
+      }
+
+      gameState = fresh;
+      await syncState();
+    };
+
+    function enterRoom(code, initialData) {
+      roomId = code;
+      gameState = initialData;
+      document.getElementById('lobbyView').classList.add('hidden');
+      document.getElementById('topControls').classList.remove('hidden');
+      document.getElementById('roomBadge').textContent = `ROOM: ${code}`;
+      if (isSolo) document.getElementById('switchRoleBtn').classList.remove('hidden');
+
+      renderBrailleLegend();
+      updateScreenByState();
+
+      if (!isSolo && db) {
+        unsubscribeRoom = onSnapshot(doc(db, 'bombanana_rooms', code), (docSnap) => {
+          if (docSnap.exists()) {
+            gameState = docSnap.data();
+            updateScreenByState();
+          }
+        });
+      }
+    }
+
+    function updateScreenByState() {
+      if (!gameState) return;
+
+      if (!isSolo && gameState.roles) {
+        if (gameState.roles.defuser === myPlayerId) myRole = 'defuser';
+        else if (gameState.roles.expert === myPlayerId) myRole = 'expert';
+        else myRole = null;
+      }
+
+      if (gameState.status === 'waiting') {
+        intervalsStarted = false;
+        clearInterval(timerInterval);
+        document.getElementById('endModal').classList.add('hidden');
+        document.getElementById('waitingRoomView').classList.remove('hidden');
+        document.getElementById('defuserView').classList.add('hidden');
+        document.getElementById('expertView').classList.add('hidden');
+        renderWaitingRoom();
+        return;
+      }
+
+      document.getElementById('waitingRoomView').classList.add('hidden');
+      document.getElementById('defuserView').classList.toggle('hidden', myRole !== 'defuser');
+      document.getElementById('expertView').classList.toggle('hidden', myRole !== 'expert');
+
+      if (!intervalsStarted && gameState.status === 'playing') {
+        intervalsStarted = true;
+        startGameLoops();
+      }
+
+      renderGame();
+      renderManualPage();
+    }
+
+    function renderWaitingRoom() {
+      document.getElementById('waitingRoomCode').textContent = roomId;
+
+      const isChaos = gameState.mode === 'chaos';
+      document.getElementById('modeNormalBtn').className = !isChaos
+        ? 'py-2 px-3 rounded-lg border-2 border-emerald-400 bg-emerald-400/15 text-emerald-300 font-black text-xs'
+        : 'py-2 px-3 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 font-bold text-xs';
+      document.getElementById('modeChaosBtn').className = isChaos
+        ? 'py-2 px-3 rounded-lg border-2 border-rose-500 bg-rose-500/20 text-rose-300 font-black text-xs'
+        : 'py-2 px-3 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 font-bold text-xs';
+      document.getElementById('modeDescText').textContent = isChaos
+        ? '⚠️ 每隔 ~24 秒隨機觸發 4 種混亂干擾，需在 15 秒內排除！'
+        : '專注破解標準謎題，無額外中斷干擾。';
+
+      [4, 5, 6].forEach(c => {
+        const active = gameState.moduleCount === c;
+        document.getElementById(`countBtn${c}`).className = active
+          ? 'py-2 rounded-lg border-2 border-cyan-400 bg-cyan-400/15 text-cyan-300 font-black text-xs'
+          : 'py-2 rounded-lg border border-slate-700 bg-slate-800 text-slate-300 font-bold text-xs';
+      });
+
+      const defHolder = gameState.roles?.defuser;
+      const expHolder = gameState.roles?.expert;
+
+      const cardDef = document.getElementById('cardDefuser');
+      const statusDef = document.getElementById('statusDefuser');
+      if (defHolder === myPlayerId || (isSolo && myRole === 'defuser')) {
+        cardDef.className = 'cursor-pointer rounded-2xl border-2 border-yellow-400 bg-yellow-400/15 p-4 text-center space-y-2 transition shadow-lg';
+        statusDef.innerHTML = '<span class="inline-block text-xs font-black px-3 py-1 rounded-full bg-yellow-400 text-slate-950">✓ 你已選擇此角色</span>';
+      } else if (defHolder && !isSolo) {
+        cardDef.className = 'cursor-not-allowed rounded-2xl border-2 border-slate-700 bg-slate-950/80 opacity-60 p-4 text-center space-y-2';
+        statusDef.innerHTML = '<span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">🔒 搭檔已認領</span>';
+      } else {
+        cardDef.className = 'cursor-pointer rounded-2xl border-2 border-slate-700 bg-slate-800/50 hover:border-yellow-400/70 p-4 text-center space-y-2 transition';
+        statusDef.innerHTML = '<span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">點擊認領此角色</span>';
+      }
+
+      const cardExp = document.getElementById('cardExpert');
+      const statusExp = document.getElementById('statusExpert');
+      if (expHolder === myPlayerId || (isSolo && myRole === 'expert')) {
+        cardExp.className = 'cursor-pointer rounded-2xl border-2 border-cyan-400 bg-cyan-400/15 p-4 text-center space-y-2 transition shadow-lg';
+        statusExp.innerHTML = '<span class="inline-block text-xs font-black px-3 py-1 rounded-full bg-cyan-400 text-slate-950">✓ 你已選擇此角色</span>';
+      } else if (expHolder && !isSolo) {
+        cardExp.className = 'cursor-not-allowed rounded-2xl border-2 border-slate-700 bg-slate-950/80 opacity-60 p-4 text-center space-y-2';
+        statusExp.innerHTML = '<span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">🔒 搭檔已認領</span>';
+      } else {
+        cardExp.className = 'cursor-pointer rounded-2xl border-2 border-slate-700 bg-slate-800/50 hover:border-cyan-400/70 p-4 text-center space-y-2 transition';
+        statusExp.innerHTML = '<span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">點擊認領此角色</span>';
+      }
+
+      const startBtn = document.getElementById('startMissionBtn');
+      const hintText = document.getElementById('waitingHintText');
+      if (defHolder && expHolder) {
+        startBtn.disabled = false;
+        startBtn.className = 'w-full py-3.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-sm shadow-lg transition cursor-pointer';
+        startBtn.textContent = '🚀 雙方已就位！啟動定時炸彈 (03:00)';
+        hintText.textContent = '確認模式與難度後按下按鈕即刻開局';
+        hintText.className = 'text-center text-xs text-emerald-400 font-bold';
+      } else {
+        startBtn.disabled = true;
+        startBtn.className = 'w-full py-3.5 rounded-xl bg-slate-800 text-slate-500 font-black text-sm cursor-not-allowed';
+        startBtn.textContent = '等待雙方都選好角色後即可開始...';
+        hintText.textContent = '請兩位玩家分別認領拆彈員與手冊員';
+        hintText.className = 'text-center text-xs text-slate-400';
+      }
+    }
+
+    // =========================================================================
+    // 6. 計時器與混亂模式事件引擎
+    // =========================================================================
+    function createRandomChaosEvent() {
+      const pool = ['alarm', 'pressure', 'color_sync', 'overclock'];
+      const chosen = pool[Math.floor(Math.random() * pool.length)];
+
+      if (chosen === 'alarm') {
+        return {
+          type: 'alarm',
+          icon: '🔔',
+          title: '混亂干擾：高壓蜂鳴器警報！',
+          desc: '請立即連續點擊「靜音按鈕」5 次關閉刺耳警報！',
+          clicksNeeded: 5,
+          timeLeft: 15
+        };
+      }
+      if (chosen === 'pressure') {
+        return {
+          type: 'pressure',
+          icon: '🌡️',
+          title: '混亂干擾：香蕉壓力閥過載！',
+          desc: '管線壓力即將爆表，請點擊「洩壓閥門」3 次釋放壓力！',
+          clicksNeeded: 3,
+          timeLeft: 15
+        };
+      }
+      if (chosen === 'color_sync') {
+        const colors = ['red', 'blue', 'green', 'yellow'];
+        const targetColor = colors[Math.floor(Math.random() * 4)];
+        return {
+          type: 'color_sync',
+          icon: '🎨',
+          title: '混亂干擾：緊急電路色碼校準！',
+          desc: `系統要求立即按下【${COLOR_META[targetColor].label}】按鈕完成校準！`,
+          targetColor,
+          timeLeft: 15
+        };
+      }
+      return {
+        type: 'overclock',
+        icon: '⚡',
+        title: '混亂干擾：核心超頻（時間 2 倍速流逝）！',
+        desc: '炸彈倒數速度加倍中！請立即點擊「降頻冷卻」恢復正常流速！',
+        clicksNeeded: 1,
+        timeLeft: 15
+      };
+    }
+
+    function startGameLoops() {
+      clearInterval(timerInterval);
+      timerInterval = setInterval(async () => {
+        if (!gameState || gameState.status !== 'playing') return;
+        const isHostController = isSolo || myRole === 'defuser';
+        if (!isHostController) return;
+
+        const timeStep = (gameState.chaosEvent && gameState.chaosEvent.type === 'overclock') ? 2 : 1;
+        gameState.timeLeft = Math.max(0, gameState.timeLeft - timeStep);
+        if (gameState.timeLeft <= 10) playTone(880, 0.05);
+
+        if (gameState.mode === 'chaos') {
+          if (gameState.chaosEvent) {
+            gameState.chaosEvent.timeLeft -= 1;
+            if (gameState.chaosEvent.timeLeft <= 0) {
+              gameState.chaosEvent = null;
+              gameState.nextChaosIn = 24;
+              await triggerStrike();
+              return;
+            }
+          } else {
+            gameState.nextChaosIn -= 1;
+            if (gameState.nextChaosIn <= 0 && gameState.timeLeft > 15) {
+              gameState.chaosEvent = createRandomChaosEvent();
+              playTone(320, 0.25, 'sawtooth');
+            }
+          }
+        }
+
+        if (gameState.timeLeft <= 0) {
+          gameState.timeLeft = 0;
+          gameState.status = 'exploded';
+          playTone(130, 0.6, 'sawtooth');
+        }
+        await syncState();
+      }, 1000);
+    }
+
+    window.handleChaosClick = async (clickedColor = null) => {
+      if (!gameState || !gameState.chaosEvent) return;
+      const ev = gameState.chaosEvent;
+
+      if (ev.type === 'color_sync') {
+        if (clickedColor === ev.targetColor) {
+          playTone(780, 0.12);
+          gameState.chaosEvent = null;
+          gameState.nextChaosIn = 24;
+        } else {
+          gameState.chaosEvent = null;
+          gameState.nextChaosIn = 24;
+          await triggerStrike();
+          return;
+        }
+      } else {
+        playTone(620, 0.06);
+        ev.clicksNeeded -= 1;
+        if (ev.clicksNeeded <= 0) {
+          playTone(780, 0.12);
+          gameState.chaosEvent = null;
+          gameState.nextChaosIn = 24;
+        }
+      }
+      await syncState();
+    };
+
+    async function syncState() {
+      updateScreenByState();
+      if (!isSolo && db && roomId) {
+        await updateDoc(doc(db, 'bombanana_rooms', roomId), gameState);
+      }
+    }
+
+    async function triggerStrike() {
+      playTone(150, 0.25, 'sawtooth');
+      gameState.strikes += 1;
+      const grid = document.getElementById('modulesGrid');
+      if (grid) {
+        grid.classList.remove('shake');
+        void grid.offsetWidth;
+        grid.classList.add('shake');
+      }
+      if (gameState.strikes >= gameState.maxStrikes) {
+        gameState.status = 'exploded';
+      }
+      await syncState();
+    }
+
+    async function checkWinCondition() {
+      if (gameState.modules.every(m => m.solved)) {
+        gameState.status = 'won';
+        playTone(660, 0.12);
+        setTimeout(() => playTone(880, 0.25), 130);
+      }
+      await syncState();
+    }
+
+    // =========================================================================
+    // 7. 拆彈員面板渲染與模組互動事件
+    // =========================================================================
+    function renderGame() {
+      if (!gameState || gameState.status === 'waiting') return;
+      const mins = String(Math.floor(gameState.timeLeft / 60)).padStart(2, '0');
+      const secs = String(gameState.timeLeft % 60).padStart(2, '0');
+      document.getElementById('timerDisplay').textContent = `${mins}:${secs}`;
+
+      const isOverclock = gameState.chaosEvent && gameState.chaosEvent.type === 'overclock';
+      document.getElementById('overclockBadge').classList.toggle('hidden', !isOverclock);
+
+      const solvedCount = gameState.modules.filter(m => m.solved).length;
+      document.getElementById('hudProgressDisplay').textContent = `${solvedCount} / ${gameState.modules.length}`;
+      document.getElementById('expertProgressText').textContent = `${solvedCount} / ${gameState.modules.length}`;
+      document.getElementById('hudModeDisplay').textContent = gameState.mode === 'chaos' ? '🔥 混亂模式' : '🛡️ 正常模式';
+      document.getElementById('hudModeDisplay').className = gameState.mode === 'chaos' ? 'font-black text-rose-400' : 'font-black text-emerald-400';
+
+      const strikesEl = document.getElementById('strikesDisplay');
+      strikesEl.innerHTML = '';
+      for (let i = 0; i < gameState.maxStrikes; i++) {
+        const active = i < gameState.strikes;
+        strikesEl.innerHTML += `<span class="w-6 h-6 rounded border ${active ? 'border-rose-500 bg-rose-500/20 text-rose-400 led-glow-red' : 'border-slate-700 bg-slate-800 text-slate-600'} flex items-center justify-center text-xs font-black">X</span>`;
+      }
+
+      const chaosBanner = document.getElementById('chaosBanner');
+      if (gameState.chaosEvent && gameState.status === 'playing') {
+        const ev = gameState.chaosEvent;
+        chaosBanner.classList.remove('hidden');
+        document.getElementById('chaosIcon').textContent = ev.icon || '🚨';
+        document.getElementById('chaosTitle').textContent = ev.title;
+        document.getElementById('chaosDesc').textContent = ev.desc;
+        document.getElementById('chaosTimerBadge').textContent = `${ev.timeLeft}s`;
+
+        const actionArea = document.getElementById('chaosActionArea');
+        if (ev.type === 'color_sync') {
+          actionArea.innerHTML = ['red', 'blue', 'green', 'yellow'].map(c => `
+            <button onclick="handleChaosClick('${c}')" class="px-3.5 py-2 rounded-xl ${COLOR_META[c].bgClass} hover:brightness-125 text-slate-950 font-black text-xs shadow">
+              ${COLOR_META[c].short}色
+            </button>
+          `).join('');
+        } else if (ev.type === 'overclock') {
+          actionArea.innerHTML = `
+            <button onclick="handleChaosClick()" class="px-4 py-2.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-xs shadow-lg">
+              ❄️ 降頻冷卻 (COOL DOWN)
+            </button>
+          `;
+        } else {
+          actionArea.innerHTML = `
+            <button onclick="handleChaosClick()" class="px-4 py-2.5 rounded-xl bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-xs shadow-lg">
+              排除干擾 (剩餘 ${ev.clicksNeeded} 下)
+            </button>
+          `;
+        }
+      } else {
+        chaosBanner.classList.add('hidden');
+      }
+
+      if (gameState.status !== 'playing') {
+        document.getElementById('endModal').classList.remove('hidden');
+        if (gameState.status === 'won') {
+          document.getElementById('endIcon').textContent = '🍌🎉';
+          document.getElementById('endTitle').textContent = '成功拆除炸彈！';
+          document.getElementById('endTitle').className = 'text-2xl font-black text-emerald-400';
+        } else {
+          document.getElementById('endIcon').textContent = '💥💀';
+          document.getElementById('endTitle').textContent = 'BOOM！任務失敗';
+          document.getElementById('endTitle').className = 'text-2xl font-black text-rose-500';
+        }
+        document.getElementById('endDesc').textContent = `剩餘時間：${mins}:${secs} ｜ 累計失誤：${gameState.strikes} 次`;
+        return;
+      }
+
+      const bulbStyles = {
+        red: 'bg-rose-500 border-rose-300 led-glow-red',
+        yellow: 'bg-yellow-400 border-yellow-200 led-glow-yellow',
+        green: 'bg-emerald-500 border-emerald-300 led-glow-green',
+        blue: 'bg-blue-500 border-blue-300 led-glow-blue'
+      };
+      const colorBg = {
+        red: 'bg-rose-500', yellow: 'bg-yellow-400', green: 'bg-emerald-500', blue: 'bg-blue-500'
+      };
+
+      const grid = document.getElementById('modulesGrid');
+      grid.innerHTML = '';
+
+      gameState.modules.forEach((mod, mIdx) => {
+        const card = document.createElement('div');
+        card.className = `bg-slate-900 border-2 ${mod.solved ? 'border-emerald-500/60' : 'border-slate-700'} rounded-2xl p-4 flex flex-col justify-between space-y-3`;
+
+        const header = `
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span class="font-black text-sm text-slate-200">${mod.name}</span>
+            <span class="w-3.5 h-3.5 rounded-full ${mod.solved ? 'bg-emerald-400 led-glow-green' : 'bg-slate-700'}"></span>
+          </div>
+        `;
+
+        let body = '';
+
+        // 1. Cable (電纜)
+        if (mod.id === 'cable') {
+          body = `
+            <div class="flex items-center justify-between gap-3 py-1">
+              <div class="flex-1 bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-3 flex items-center justify-around">
+                ${mod.wires.map((c, idx) => `
+                  <button onclick="actCable(${mIdx}, ${idx})" ${mod.solved || mod.cut[idx] ? 'disabled' : ''} class="h-24 w-7 flex flex-col items-center justify-between group">
+                    <span class="text-[10px] font-bold ${COLOR_META[c].textClass}">${COLOR_META[c].short}</span>
+                    ${mod.cut[idx]
+                      ? `<div class="w-3 h-7 ${colorBg[c]} opacity-30"></div><span class="text-[10px] text-slate-500">✂</span><div class="w-3 h-7 ${colorBg[c]} opacity-30"></div>`
+                      : `<div class="w-3.5 flex-1 rounded-full ${colorBg[c]} group-hover:brightness-125 transition"></div>`
+                    }
+                  </button>
+                `).join('')}
+              </div>
+              <div class="flex flex-col items-center gap-1 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                <div class="w-7 h-7 rounded-full border-2 ${bulbStyles[mod.light]}"></div>
+                <span class="mono text-[9px] text-slate-400">LIGHT</span>
+              </div>
+            </div>
+          `;
+        }
+
+        // 2. Color Slider (顏色滑桿)
+        if (mod.id === 'slider') {
+          body = `
+            <div class="space-y-2.5 py-1">
+              <div class="grid grid-cols-4 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                ${mod.sliders.map((s, idx) => `
+                  <button onclick="actSliderToggle(${mIdx}, ${idx})" ${mod.solved ? 'disabled' : ''} class="flex flex-col items-center gap-1.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500">
+                    <span class="text-xs font-black ${s.dir === 'up' ? 'text-yellow-300' : 'text-slate-600'}">▲</span>
+                    <div class="w-4 h-10 rounded-full bg-slate-800 p-0.5 flex flex-col ${s.dir === 'up' ? 'justify-start' : 'justify-end'}">
+                      <div class="w-3 h-5 rounded-full ${colorBg[s.color]}"></div>
+                    </div>
+                    <span class="text-xs font-black ${s.dir === 'down' ? 'text-yellow-300' : 'text-slate-600'}">▼</span>
+                  </button>
+                `).join('')}
+              </div>
+              <button onclick="actSliderSubmit(${mIdx})" ${mod.solved ? 'disabled' : ''} class="w-full py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs">
+                確認滑桿方向 (SUBMIT)
+              </button>
+            </div>
+          `;
+        }
+
+        // 3. Direction (方向點字)
+        if (mod.id === 'direction') {
+          const cur = mod.stages[Math.min(mod.stage, 3)];
+          body = `
+            <div class="flex items-center justify-between gap-2 py-1">
+              <div class="flex flex-col gap-1.5 bg-slate-950 p-1.5 rounded-lg border border-slate-800">
+                ${[0,1,2,3].map(i => `<div class="w-2.5 h-2.5 rounded-sm ${i < mod.stage ? 'bg-emerald-400 led-glow-green' : 'bg-slate-800'}"></div>`).join('')}
+              </div>
+              <div class="grid grid-cols-3 gap-1 items-center justify-items-center">
+                <div></div>
+                <button onclick="actDirection(${mIdx}, 'up')" ${mod.solved ? 'disabled' : ''} class="w-10 h-8 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-black">▲</button>
+                <div></div>
+                <button onclick="actDirection(${mIdx}, 'left')" ${mod.solved ? 'disabled' : ''} class="w-10 h-10 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-black">◀</button>
+                ${renderBrailleBox(cur.num, "w-10 h-10", "w-2.5 h-2.5")}
+                <button onclick="actDirection(${mIdx}, 'right')" ${mod.solved ? 'disabled' : ''} class="w-10 h-10 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-black">▶</button>
+                <div></div>
+                <button onclick="actDirection(${mIdx}, 'down')" ${mod.solved ? 'disabled' : ''} class="w-10 h-8 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-black">▼</button>
+                <div></div>
+              </div>
+              <div class="self-start flex flex-col items-center gap-1 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                <div class="w-6 h-6 rounded-full border-2 ${bulbStyles[cur.light]}"></div>
+                <span class="mono text-[9px] text-slate-400">BULB</span>
+              </div>
+            </div>
+          `;
+        }
+
+        // 4. Calculator (兩步驟計算機)
+        if (mod.id === 'calculator') {
+          body = `
+            <div class="space-y-2 py-1">
+              <div class="flex items-center justify-between bg-black border border-slate-700 rounded-xl px-3 py-2">
+                <div>
+                  <div class="text-[10px] text-slate-400">${mod.step === 1 ? 'STEP 1: 輸入算式結果' : 'STEP 2: 輸入 1 碼確認鍵'}</div>
+                  <div class="mono text-sm font-black text-emerald-400">${mod.step === 1 ? mod.expr : 'READY FOR CODE'} <span class="text-yellow-300">[${mod.input || '_'}]</span></div>
+                </div>
+                <div class="w-6 h-6 rounded-full border-2 ${bulbStyles[mod.light]}"></div>
+              </div>
+              <div class="grid grid-cols-4 gap-1 mono text-xs font-bold">
+                ${[1,2,3,4,5,6,7,8,9,0].map(n => `<button onclick="actCalcKey(${mIdx}, '${n}')" ${mod.solved ? 'disabled' : ''} class="py-1.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700">${n}</button>`).join('')}
+                <button onclick="actCalcClear(${mIdx})" ${mod.solved ? 'disabled' : ''} class="py-1.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40">C</button>
+                <button onclick="actCalcOk(${mIdx})" ${mod.solved ? 'disabled' : ''} class="py-1.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">OK</button>
+              </div>
+            </div>
+          `;
+        }
+
+        // 5. Symbol (發聲符號)
+        if (mod.id === 'symbol') {
+          body = `
+            <div class="space-y-2.5 py-1">
+              <div class="text-center text-xs text-slate-400">階段 <span class="text-yellow-300 font-black">${mod.stage} / 4</span>（點擊找出發聲符號）</div>
+              <div class="grid grid-cols-4 gap-1.5">
+                ${mod.icons.map((ic, idx) => `
+                  <button onclick="actSymbolTest(${mIdx}, ${idx})" ${mod.solved ? 'disabled' : ''} class="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xl">
+                    ${ic}
+                  </button>
+                `).join('')}
+              </div>
+              <div class="grid grid-cols-4 gap-1.5 pt-1">
+                ${['red','yellow','green','blue'].map(c => `
+                  <button onclick="actSymbolColor(${mIdx}, '${c}')" ${mod.solved ? 'disabled' : ''} class="h-7 rounded-lg ${colorBg[c]} hover:brightness-125 border border-white/20"></button>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // 6. Piano (鋼琴)
+        if (mod.id === 'piano') {
+          const notes = ['C','D','E','F','G','A','B'];
+          body = `
+            <div class="space-y-2.5 py-1">
+              <div class="flex items-center justify-between bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] text-slate-400">八度點字：</span>
+                  ${renderBrailleBox(mod.octave, "w-7 h-7", "w-2 h-2")}
+                </div>
+                <div class="mono text-[10px] text-cyan-300">已彈：${mod.played.length}/4</div>
+                <div class="w-6 h-6 rounded-full border-2 ${bulbStyles[mod.light]}"></div>
+              </div>
+              <div class="grid grid-cols-7 gap-1">
+                ${notes.map((n, idx) => `
+                  <button onclick="actPianoKey(${mIdx}, '${n}')" ${mod.solved ? 'disabled' : ''} class="h-22 py-1.5 rounded-b-lg bg-slate-100 hover:bg-yellow-100 active:bg-yellow-300 text-slate-950 flex flex-col justify-end items-center border border-slate-400 leading-tight">
+                    <span class="font-black text-xs">${n}</span>
+                    <span class="mono text-[11px] font-bold text-slate-600">${idx + 1}</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // 7. Soundboard (3x3 音效板)
+        if (mod.id === 'soundboard') {
+          body = `
+            <div class="space-y-2 py-1">
+              <div class="grid grid-cols-3 gap-1.5 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                ${mod.cells.map((cell, idx) => `
+                  <button onclick="actSoundboardCell(${mIdx}, ${idx})" ${mod.solved ? 'disabled' : ''} class="py-1.5 px-1 rounded-lg border-2 flex items-center justify-center gap-1.5 transition ${cell.active ? 'border-white bg-white/20' : 'border-slate-700 bg-slate-900'}">
+                    <span class="w-2.5 h-2.5 rounded-full ${colorBg[cell.color]}"></span>
+                    ${renderBrailleBox(cell.num, "w-6 h-6", "w-1.5 h-1.5")}
+                  </button>
+                `).join('')}
+              </div>
+              <button onclick="actSoundboardSubmit(${mIdx})" ${mod.solved ? 'disabled' : ''} class="w-full py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs">
+                送出點亮圖案 (CONFIRM)
+              </button>
+            </div>
+          `;
+        }
+
+        // 8. Switch (四連開關)
+        if (mod.id === 'switch') {
+          body = `
+            <div class="space-y-2.5 py-1">
+              <div class="grid grid-cols-4 gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                ${mod.switches.map((sw, idx) => `
+                  <div class="flex flex-col items-center gap-1.5 bg-slate-900 p-1.5 rounded-lg border border-slate-800">
+                    <div class="w-4 h-4 rounded-full border ${bulbStyles[sw.color]}"></div>
+                    ${renderBrailleBox(sw.num, "w-6 h-6", "w-1.5 h-1.5")}
+                    <button onclick="actSwitchToggle(${mIdx}, ${idx})" ${mod.solved ? 'disabled' : ''} class="w-full py-1 rounded text-[10px] font-black ${sw.pos === 'up' ? 'bg-yellow-400 text-slate-950' : 'bg-slate-700 text-slate-200'}">
+                      ${sw.pos === 'up' ? '▲ 上' : '▼ 下'}
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+              <button onclick="actSwitchEnter(${mIdx})" ${mod.solved ? 'disabled' : ''} class="w-full py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs">
+                ENTER 確認開關
+              </button>
+            </div>
+          `;
+        }
+
+        // 9. Maze (盲眼迷宮)
+        if (mod.id === 'maze') {
+          let cells = '';
+          for (let y = 0; y < 5; y++) {
+            for (let x = 0; x < 5; x++) {
+              const isP = mod.pos.x === x && mod.pos.y === y;
+              const isG = mod.goal.x === x && mod.goal.y === y;
+              cells += `<div class="w-6 h-6 border border-slate-800 flex items-center justify-center text-[10px] ${isP ? 'bg-rose-500 rounded-full text-white font-bold' : isG ? 'bg-emerald-500/30 text-emerald-300 font-bold' : 'text-slate-700'}">${isP ? '●' : isG ? '⚑' : '·'}</div>`;
+            }
+          }
+          body = `
+            <div class="space-y-1.5">
+              <div class="text-center mono text-xs text-yellow-300 font-bold">迷宮編號：#${mod.mapId}</div>
+              <div class="flex items-center justify-around">
+                <div class="grid grid-cols-5 bg-black p-1 rounded border border-slate-700">${cells}</div>
+                <div class="grid grid-cols-3 gap-1 w-24">
+                  <div></div><button onclick="actMazeMove(${mIdx}, 0, -1)" class="bg-slate-800 p-1 rounded text-xs">▲</button><div></div>
+                  <button onclick="actMazeMove(${mIdx}, -1, 0)" class="bg-slate-800 p-1 rounded text-xs">◀</button>
+                  <div></div>
+                  <button onclick="actMazeMove(${mIdx}, 1, 0)" class="bg-slate-800 p-1 rounded text-xs">▶</button>
+                  <div></div><button onclick="actMazeMove(${mIdx}, 0, 1)" class="bg-slate-800 p-1 rounded text-xs">▼</button><div></div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+
+        // 10. Morse (純蜂鳴器音效版)
+        if (mod.id === 'morse') {
+          body = `
+            <div class="space-y-2 py-1">
+              <div class="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                <button onclick="playMorseAudio(${mod.stdDigit})" ${mod.solved ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs">
+                  🔊 播放摩斯長短音
+                </button>
+                <span class="mono text-base font-black text-cyan-300">[ ${mod.input || '_'} ]</span>
+              </div>
+              <div class="grid grid-cols-5 gap-1 mono text-xs font-bold">
+                ${[0,1,2,3,4,5,6,7,8,9].map(d => `
+                  <button onclick="actMorseSubmit(${mIdx}, ${d})" ${mod.solved ? 'disabled' : ''} class="py-1.5 rounded bg-slate-800 hover:bg-cyan-500/20 border border-slate-700">${d}</button>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        // 11. Monkey Says (猴子說)
+        if (mod.id === 'monkey') {
+          const curFlash = mod.seq[mod.stage - 1];
+          const colorZh = { red: '🔴 紅色', blue: '🔵 藍色', green: '🟢 綠色', yellow: '🟡 黃色' };
+          body = `
+            <div class="space-y-2.5 py-1 text-center">
+              <div class="bg-black border border-slate-700 rounded-xl py-2 text-xs">
+                階段 <span class="text-cyan-300 font-black">${mod.stage}/4</span> ｜ 閃爍：<span class="font-black text-white">${colorZh[curFlash]}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="actMonkeyPress(${mIdx}, 'red')" ${mod.solved ? 'disabled' : ''} class="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 font-bold text-xs">紅色</button>
+                <button onclick="actMonkeyPress(${mIdx}, 'blue')" ${mod.solved ? 'disabled' : ''} class="py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-bold text-xs">藍色</button>
+                <button onclick="actMonkeyPress(${mIdx}, 'green')" ${mod.solved ? 'disabled' : ''} class="py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold text-xs">綠色</button>
+                <button onclick="actMonkeyPress(${mIdx}, 'yellow')" ${mod.solved ? 'disabled' : ''} class="py-2 rounded-lg bg-yellow-400 hover:bg-yellow-300 text-black font-bold text-xs">黃色</button>
+              </div>
+            </div>
+          `;
+        }
+
+        card.innerHTML = header + body;
+        grid.appendChild(card);
+      });
+    }
+
+    // --- 各模組操作處理函式 ---
+    window.actCable = async (mIdx, wireIdx) => {
+      const mod = gameState.modules[mIdx];
+      mod.cut[wireIdx] = true;
+      const clickedColor = mod.wires[wireIdx];
+      const lookupEntry = CABLE_FIXED_LOOKUP[mod.wires.join('-')];
+      const expectedColor = lookupEntry.byLight[mod.light];
+      if (clickedColor === expectedColor) {
+        playTone(660, 0.12);
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await triggerStrike();
+      }
+    };
+
+    window.actSliderToggle = async (mIdx, sIdx) => {
+      const mod = gameState.modules[mIdx];
+      playTone(500, 0.05);
+      mod.sliders[sIdx].dir = mod.sliders[sIdx].dir === 'up' ? 'down' : 'up';
+      await syncState();
+    };
+
+    window.actSliderSubmit = async (mIdx) => {
+      const mod = gameState.modules[mIdx];
+      const rules = gameState.manual.slider;
+      const ok = mod.sliders.every(s => s.dir === rules[s.color]);
+      if (ok) {
+        playTone(680, 0.12);
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await triggerStrike();
+      }
+    };
+
+    window.actDirection = async (mIdx, dir) => {
+      const mod = gameState.modules[mIdx];
+      const cur = mod.stages[mod.stage];
+      const expected = DIRECTION_TABLE[cur.num][cur.light];
+      if (dir === expected) {
+        playTone(560 + mod.stage * 60, 0.08);
+        mod.stage += 1;
+        if (mod.stage >= 4) {
+          mod.solved = true;
+          await checkWinCondition();
+        } else {
+          await syncState();
+        }
+      } else {
+        await triggerStrike();
+      }
+    };
+
+    window.actCalcKey = async (mIdx, digit) => {
+      const mod = gameState.modules[mIdx];
+      playTone(520, 0.05);
+      if (mod.input.length < 4) mod.input += digit;
+      await syncState();
+    };
+
+    window.actCalcClear = async (mIdx) => {
+      gameState.modules[mIdx].input = '';
+      await syncState();
+    };
+
+    window.actCalcOk = async (mIdx) => {
+      const mod = gameState.modules[mIdx];
+      if (mod.step === 1) {
+        if (parseInt(mod.input) === mod.ans) {
+          playTone(640, 0.08);
+          mod.step = 2;
+          mod.input = '';
+          await syncState();
+        } else {
+          mod.input = '';
+          await triggerStrike();
+        }
+      } else {
+        const parity = mod.ans % 2 === 1 ? 'odd' : 'even';
+        const expectedCode = CALC_STEP2_TABLE[mod.light][parity];
+        if (mod.input === expectedCode) {
+          playTone(720, 0.12);
+          mod.solved = true;
+          await checkWinCondition();
+        } else {
+          mod.input = '';
+          await triggerStrike();
+        }
+      }
+    };
+
+    window.actSymbolTest = (mIdx, idx) => {
+      const mod = gameState.modules[mIdx];
+      if (idx === mod.soundIdx) {
+        playTone(740, 0.14, 'triangle');
+      } else {
+        playTone(180, 0.04, 'sine', 0.02);
+      }
+    };
+
+    window.actSymbolColor = async (mIdx, color) => {
+      const mod = gameState.modules[mIdx];
+      const stageAns = { 1: 'green', 2: 'yellow', 3: 'red', 4: 'yellow' };
+      if (color === stageAns[mod.stage]) {
+        playTone(600 + mod.stage * 60, 0.08);
+        if (mod.stage >= 4) {
+          mod.solved = true;
+          await checkWinCondition();
+        } else {
+          mod.stage += 1;
+          await syncState();
+        }
+      } else {
+        await triggerStrike();
+      }
+    };
+
+    window.actPianoKey = async (mIdx, note) => {
+      const mod = gameState.modules[mIdx];
+      playTone(PIANO_FREQS[note], 0.25, 'triangle', 0.12);
+      const targetSeq = PIANO_TABLE[mod.octave][mod.light];
+      const stepIdx = mod.played.length;
+      if (note === targetSeq[stepIdx]) {
+        mod.played.push(note);
+        if (mod.played.length >= 4) {
+          mod.solved = true;
+          await checkWinCondition();
+        } else {
+          await syncState();
+        }
+      } else {
+        mod.played = [];
+        await triggerStrike();
+      }
+    };
+
+    window.actSoundboardCell = async (mIdx, idx) => {
+      const mod = gameState.modules[mIdx];
+      if (idx === mod.soundCellIdx) playTone(820, 0.12);
+      else playTone(420, 0.04);
+      mod.cells[idx].active = !mod.cells[idx].active;
+      await syncState();
+    };
+
+    window.actSoundboardSubmit = async (mIdx) => {
+      const mod = gameState.modules[mIdx];
+      const targetCell = mod.cells[mod.soundCellIdx];
+      const pattern = SOUNDBOARD_TABLE[targetCell.num][targetCell.color];
+      const ok = mod.cells.every((c, i) => (c.active ? 1 : 0) === pattern[i]);
+      if (ok) {
+        playTone(700, 0.12);
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await triggerStrike();
+      }
+    };
+
+    window.actSwitchToggle = async (mIdx, idx) => {
+      const mod = gameState.modules[mIdx];
+      playTone(480, 0.05);
+      mod.switches[idx].pos = mod.switches[idx].pos === 'up' ? 'down' : 'up';
+      await syncState();
+    };
+
+    window.actSwitchEnter = async (mIdx) => {
+      const mod = gameState.modules[mIdx];
+      const redNum = mod.switches.find(s => s.color === 'red').num;
+      const rules = gameState.manual.switchRules;
+      const ok = mod.switches.every((sw, idx) => {
+        const r = rules[idx];
+        let shouldUp = false;
+        if (r === 1) shouldUp = sw.num % 2 === 1;
+        if (r === 2) shouldUp = [1, 2, 6, 9].includes(sw.num);
+        if (r === 3) shouldUp = sw.num > 5;
+        if (r === 4) shouldUp = sw.num > redNum;
+        return sw.pos === (shouldUp ? 'up' : 'down');
+      });
+      if (ok) {
+        playTone(720, 0.12);
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await triggerStrike();
+      }
+    };
+
+    window.actMazeMove = async (mIdx, dx, dy) => {
+      const mod = gameState.modules[mIdx];
+      if (mod.solved) return;
+      const nx = mod.pos.x + dx;
+      const ny = mod.pos.y + dy;
+      if (nx < 0 || nx > 4 || ny < 0 || ny > 4) return;
+      const walls = MAZE_MAPS[mod.mapId];
+      const e1 = `${mod.pos.x},${mod.pos.y}-${nx},${ny}`;
+      const e2 = `${nx},${ny}-${mod.pos.x},${mod.pos.y}`;
+      if (walls.includes(e1) || walls.includes(e2)) {
+        await triggerStrike();
+        return;
+      }
+      playTone(480, 0.05);
+      mod.pos = { x: nx, y: ny };
+      if (nx === mod.goal.x && ny === mod.goal.y) {
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await syncState();
+      }
+    };
+
+    window.playMorseAudio = (stdDigit) => {
+      const pattern = STANDARD_MORSE_DIGITS[stdDigit].code;
+      let delay = 0;
+      for (const ch of pattern) {
+        const dur = ch === '—' ? 0.55 : 0.18;
+        setTimeout(() => playTone(650, dur, 'sine', 0.1), delay * 1000);
+        delay += dur + 0.22;
+      }
+    };
+
+    window.actMorseSubmit = async (mIdx, digit) => {
+      const mod = gameState.modules[mIdx];
+      const expected = gameState.manual.morseMap[mod.stdDigit];
+      if (digit === expected) {
+        playTone(740, 0.12);
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await triggerStrike();
+      }
+    };
+
+    window.actMonkeyPress = async (mIdx, color) => {
+      const mod = gameState.modules[mIdx];
+      const curFlash = mod.seq[mod.stage - 1];
+      const expected = MONKEY_TABLE[curFlash][mod.stage - 1];
+      if (color === expected) {
+        playTone(600 + mod.stage * 60, 0.08);
+        if (mod.stage >= 4) {
+          mod.solved = true;
+          await checkWinCondition();
+        } else {
+          mod.stage += 1;
+          await syncState();
+        }
+      } else {
+        await triggerStrike();
+      }
+    };
+
+    // =========================================================================
+    // 8. 翻頁式拆彈手冊渲染（一頁一模組，並保留捲動位置避免每秒跳回頂部）
+    // =========================================================================
+    const MANUAL_PAGES = [
+      { id: 'cable', title: '1. Cable 電纜', dynamic: false },
+      { id: 'slider', title: '2. Color Slider 滑桿', dynamic: true },
+      { id: 'direction', title: '3. Direction 方向', dynamic: false },
+      { id: 'calculator', title: '4. Calculator 計算機', dynamic: false },
+      { id: 'symbol', title: '5. Symbol 符號', dynamic: false },
+      { id: 'piano', title: '6. Piano 鋼琴', dynamic: false },
+      { id: 'soundboard', title: '7. Soundboard 音效板', dynamic: false },
+      { id: 'switch', title: '8. Switch 開關', dynamic: true },
+      { id: 'maze', title: '9. Maze 盲眼迷宮', dynamic: false },
+      { id: 'morse', title: '10. Morse 摩斯', dynamic: true },
+      { id: 'monkey', title: '11. Monkey Says 猴子說', dynamic: false }
+    ];
+
+    function renderBrailleLegend() {
+      const bar = document.getElementById('brailleLegendBar');
+      if (!bar) return;
+      bar.innerHTML = [1,2,3,4,5,6,7,8,9].map(n => `
+        <div class="flex items-center justify-center gap-1.5 bg-slate-900 border border-slate-800 py-1 px-1.5 rounded">
+          ${renderBrailleBox(n, "w-5 h-5", "w-1.5 h-1.5")}
+          <span class="mono text-xs font-black text-yellow-300">${n}</span>
+        </div>
+      `).join('');
+    }
+
+    window.selectManualPage = (idx) => {
+      currentManualPageIdx = idx;
+      lastRenderedManualSignature = '';
+      renderManualPage();
+    };
+
+    window.turnManualPage = (delta) => {
+      currentManualPageIdx = (currentManualPageIdx + delta + MANUAL_PAGES.length) % MANUAL_PAGES.length;
+      lastRenderedManualSignature = '';
+      renderManualPage();
+    };
+
+    window.setManualCableFilter = (len) => {
+      manualCableFilter = len;
+      lastRenderedManualSignature = '';
+      renderManualPage();
+    };
+
+    function renderManualPage() {
+      if (!gameState) return;
+
+      // 產生目前手冊頁面的內容特徵簽章；若與上次完全一致（例如只是倒數計時器每秒跳動），直接跳過重繪，避免重置捲軸
+      const signature = JSON.stringify({
+        pageIdx: currentManualPageIdx,
+        cableFilter: manualCableFilter,
+        manual: gameState.manual
+      });
+      if (signature === lastRenderedManualSignature) return;
+      lastRenderedManualSignature = signature;
+
+      // 記錄任何內部可捲動容器的目前捲動高度
+      const prevScrollEl = document.getElementById('manualScrollBox');
+      const savedScrollTop = prevScrollEl ? prevScrollEl.scrollTop : 0;
+
+      const tabsBar = document.getElementById('manualTabsBar');
+      tabsBar.innerHTML = MANUAL_PAGES.map((p, idx) => `
+        <button onclick="selectManualPage(${idx})" class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition ${idx === currentManualPageIdx ? 'bg-yellow-400 text-slate-950 font-black' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}">
+          ${p.title}
+        </button>
+      `).join('');
+
+      const page = MANUAL_PAGES[currentManualPageIdx];
+      document.getElementById('manualPageIndicator').textContent = `第 ${currentManualPageIdx + 1} / ${MANUAL_PAGES.length} 頁`;
+
+      const container = document.getElementById('manualPageContent');
+      const badge = page.dynamic
+        ? '<span class="text-[11px] bg-rose-500/20 text-rose-300 border border-rose-500/40 px-2.5 py-0.5 rounded-full font-bold">⚠️ 本局動態重產手冊（每局不同）</span>'
+        : '<span class="text-[11px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-full font-bold">✓ 固定對照參考表（永久不變）</span>';
+
+      let html = `
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <h3 class="text-xl font-black text-white">${page.title}</h3>
+          ${badge}
+        </div>
+      `;
+
+      // 1. Cable 固定全排列查詢表（3 條 24 組 / 4 條 24 組）
+      if (page.id === 'cable') {
+        const list = manualCableFilter === 3 ? CABLE_3_LIST : CABLE_4_LIST;
+        html += `
+          <div class="space-y-2.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="text-xs text-slate-300">由左至右對照<b>電纜顏色排序</b>與右側<b>亮燈顏色</b>，剪斷指定顏色的電纜：</p>
+              <div class="flex gap-1.5">
+                <button onclick="setManualCableFilter(3)" class="px-3 py-1 rounded-lg text-xs font-black ${manualCableFilter === 3 ? 'bg-cyan-400 text-slate-950' : 'bg-slate-800 text-slate-300'}">
+                  3 條電纜 (24種)
+                </button>
+                <button onclick="setManualCableFilter(4)" class="px-3 py-1 rounded-lg text-xs font-black ${manualCableFilter === 4 ? 'bg-cyan-400 text-slate-950' : 'bg-slate-800 text-slate-300'}">
+                  4 條電纜 (24種)
+                </button>
+              </div>
+            </div>
+
+            <div id="manualScrollBox" class="max-h-72 overflow-y-auto rounded-xl border border-slate-700">
+              <table class="w-full text-xs text-center">
+                <thead class="bg-slate-800 sticky top-0 z-10">
+                  <tr>
+                    <th class="p-2 border-b border-r border-slate-700 text-left">電纜顏色排列 (左➔右)</th>
+                    <th class="p-2 border-b border-r border-slate-700 text-rose-400">🔴 紅燈</th>
+                    <th class="p-2 border-b border-r border-slate-700 text-blue-400">🔵 藍燈</th>
+                    <th class="p-2 border-b border-r border-slate-700 text-emerald-400">🟢 綠燈</th>
+                    <th class="p-2 border-b border-slate-700 text-yellow-300">🟡 黃燈</th>
+                  </tr>
+                </thead>
+                <tbody class="font-bold divide-y divide-slate-800">
+                  ${list.map(row => {
+                    const orderStr = row.wires.map(c => `<span class="${COLOR_META[c].textClass}">${COLOR_META[c].short}</span>`).join(' ➔ ');
+                    return `
+                      <tr class="hover:bg-slate-800/50">
+                        <td class="p-1.5 border-r border-slate-800 text-left pl-3">${orderStr}</td>
+                        <td class="p-1.5 border-r border-slate-800 ${COLOR_META[row.byLight.red].textClass}">剪${COLOR_META[row.byLight.red].short}</td>
+                        <td class="p-1.5 border-r border-slate-800 ${COLOR_META[row.byLight.blue].textClass}">剪${COLOR_META[row.byLight.blue].short}</td>
+                        <td class="p-1.5 border-r border-slate-800 ${COLOR_META[row.byLight.green].textClass}">剪${COLOR_META[row.byLight.green].short}</td>
+                        <td class="p-1.5 ${COLOR_META[row.byLight.yellow].textClass}">剪${COLOR_META[row.byLight.yellow].short}</td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      if (page.id === 'slider') {
+        const sMap = gameState.manual.slider;
+        const dirText = (d) => d === 'up' ? '<span class="text-emerald-400">▲ 推到最上 (UP)</span>' : '<span class="text-rose-400">▼ 拉到最下 (DOWN)</span>';
+        html += `
+          <p class="text-xs text-slate-300">詢問拆彈員由左至右 4 根滑桿的顏色，依照<b>本局專屬方向表</b>推拉後按確認：</p>
+          <div class="grid grid-cols-2 gap-3 text-sm font-black">
+            <div class="bg-slate-800 p-3 rounded-xl flex justify-between"><span class="text-rose-400">🔴 紅色滑桿</span>${dirText(sMap.red)}</div>
+            <div class="bg-slate-800 p-3 rounded-xl flex justify-between"><span class="text-blue-400">🔵 藍色滑桿</span>${dirText(sMap.blue)}</div>
+            <div class="bg-slate-800 p-3 rounded-xl flex justify-between"><span class="text-emerald-400">🟢 綠色滑桿</span>${dirText(sMap.green)}</div>
+            <div class="bg-slate-800 p-3 rounded-xl flex justify-between"><span class="text-yellow-300">🟡 黃色滑桿</span>${dirText(sMap.yellow)}</div>
+          </div>
+        `;
+      }
+
+      if (page.id === 'direction') {
+        const arrow = { up: '▲ 上', down: '▼ 下', left: '◀ 左', right: '▶ 右' };
+        html += `
+          <p class="text-xs text-slate-300">詢問中央<b>點字數字 (1～9)</b> 與右上角<b>燈泡顏色</b>，共需連續按對 4 階段：</p>
+          <table class="w-full text-xs text-center border border-slate-700">
+            <thead class="bg-slate-800"><tr><th class="p-1.5 border border-slate-700">點字數字</th><th class="border border-slate-700 text-rose-400">🔴 紅燈</th><th class="border border-slate-700 text-blue-400">🔵 藍燈</th><th class="border border-slate-700 text-emerald-400">🟢 綠燈</th><th class="border border-slate-700 text-yellow-300">🟡 黃燈</th></tr></thead>
+            <tbody class="font-bold">
+              ${[1,2,3,4,5,6,7,8,9].map(n => `
+                <tr>
+                  <td class="p-1 border border-slate-700 bg-slate-800/50">${n}</td>
+                  <td class="border border-slate-700">${arrow[DIRECTION_TABLE[n].red]}</td>
+                  <td class="border border-slate-700">${arrow[DIRECTION_TABLE[n].blue]}</td>
+                  <td class="border border-slate-700">${arrow[DIRECTION_TABLE[n].green]}</td>
+                  <td class="border border-slate-700">${arrow[DIRECTION_TABLE[n].yellow]}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+
+      if (page.id === 'calculator') {
+        html += `
+          <div class="space-y-3 text-xs text-slate-300">
+            <p><b>步驟 1：</b>讓拆彈員先算出螢幕加減法算式結果，輸入並按 <code class="bg-slate-800 px-1.5 py-0.5 rounded">OK</code>。</p>
+            <p><b>步驟 2：</b>根據算式結果的<b>奇偶數</b>與<b>旁邊燈泡顏色</b>，輸入下表對應的 1 位數確認碼並按 <code class="bg-slate-800 px-1.5 py-0.5 rounded">OK</code>：</p>
+            <table class="w-full text-sm text-center border border-slate-700">
+              <thead class="bg-slate-800"><tr><th class="p-2 border border-slate-700">LED 燈顏色</th><th class="p-2 border border-slate-700">結果為奇數 (Odd)</th><th class="p-2 border border-slate-700">結果為偶數 (Even)</th></tr></thead>
+              <tbody class="font-black text-base mono">
+                <tr><td class="p-2 border border-slate-700 text-rose-400">🔴 紅燈</td><td class="border border-slate-700">3</td><td class="border border-slate-700">5</td></tr>
+                <tr><td class="p-2 border border-slate-700 text-blue-400">🔵 藍燈</td><td class="border border-slate-700">0</td><td class="border border-slate-700">1</td></tr>
+                <tr><td class="p-2 border border-slate-700 text-emerald-400">🟢 綠燈</td><td class="border border-slate-700">2</td><td class="border border-slate-700">9</td></tr>
+                <tr><td class="p-2 border border-slate-700 text-yellow-300">🟡 黃燈</td><td class="border border-slate-700">7</td><td class="border border-slate-700">0</td></tr>
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      if (page.id === 'symbol') {
+        html += `
+          <p class="text-xs text-slate-300">拆彈員逐一點擊 4 顆符號找出<b>會發出高音提示的那一顆</b>，接著依據目前<b>階段 (1～4)</b> 按下對應顏色按鈕：</p>
+          <div class="grid grid-cols-2 gap-3 text-sm font-black pt-2">
+            <div class="bg-slate-800 p-3 rounded-xl flex justify-between"><span>階段 1</span><span class="text-emerald-400">按 🟢 綠色按鈕</span></div>
+            <div class="bg-slate-800 p-3 rounded-xl flex justify-between"><span>階段 2</span><span class="text-yellow-300">按 🟡 黃色按鈕</span></div>
+            <div class="bg-slate-800 p-3 rounded-xl flex justify-between"><span>階段 3</span><span class="text-rose-400">按 🔴 紅色按鈕</span></div>
+            <div class="bg-slate-800 p-3 rounded-xl flex justify-between"><span>階段 4</span><span class="text-yellow-300">按 🟡 黃色按鈕</span></div>
+          </div>
+        `;
+      }
+
+      if (page.id === 'piano') {
+        const formatNotes = (arr) => arr.map(n => `${n}(${NOTE_TO_NUM[n]})`).join(' ');
+        html += `
+          <p class="text-xs text-slate-300">詢問鋼琴上的<b>八度點字數字 (1～7)</b> 與<b>右上亮燈顏色</b>，指揮拆彈員依序彈出 4 個音符（括號內為數字簡譜）：</p>
+          <table class="w-full text-xs text-center border border-slate-700 mono">
+            <thead class="bg-slate-800"><tr><th class="p-1.5 border border-slate-700">點字</th><th class="border border-slate-700 text-rose-400">🔴 紅燈</th><th class="border border-slate-700 text-yellow-300">🟡 黃燈</th><th class="border border-slate-700 text-emerald-400">🟢 綠燈</th><th class="border border-slate-700 text-blue-400">🔵 藍燈</th></tr></thead>
+            <tbody class="font-bold">
+              ${[1,2,3,4,5,6,7].map(n => `
+                <tr>
+                  <td class="p-1.5 border border-slate-700 bg-slate-800/50">${n}</td>
+                  <td class="border border-slate-700">${formatNotes(PIANO_TABLE[n].red)}</td>
+                  <td class="border border-slate-700">${formatNotes(PIANO_TABLE[n].yellow)}</td>
+                  <td class="border border-slate-700">${formatNotes(PIANO_TABLE[n].green)}</td>
+                  <td class="border border-slate-700">${formatNotes(PIANO_TABLE[n].blue)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+
+      if (page.id === 'soundboard') {
+        const renderMiniGrid = (arr) => `<div class="inline-grid grid-cols-3 gap-0.5 bg-slate-950 p-1 rounded border border-slate-700">${arr.map(v => `<span class="w-2.5 h-2.5 rounded-xs ${v ? 'bg-yellow-400' : 'bg-slate-800'}"></span>`).join('')}</div>`;
+        html += `
+          <p class="text-xs text-slate-300">找出 3×3 九宮格中<b>會發出高音提示的那一格</b>，報出該格的<b>點字數字 (1～9)</b> 與<b>顏色</b>，照下表點亮格子：</p>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            ${[1,2,3,4,5,6,7,8,9].map(n => `
+              <div class="bg-slate-800/80 p-2 rounded-xl border border-slate-700 space-y-1">
+                <div class="font-black text-yellow-300">點字 #${n}</div>
+                <div class="flex justify-around items-center">
+                  <div class="text-center"><div class="text-[10px] text-rose-400">紅</div>${renderMiniGrid(SOUNDBOARD_TABLE[n].red)}</div>
+                  <div class="text-center"><div class="text-[10px] text-blue-400">藍</div>${renderMiniGrid(SOUNDBOARD_TABLE[n].blue)}</div>
+                  <div class="text-center"><div class="text-[10px] text-emerald-400">綠</div>${renderMiniGrid(SOUNDBOARD_TABLE[n].green)}</div>
+                  <div class="text-center"><div class="text-[10px] text-yellow-300">黃</div>${renderMiniGrid(SOUNDBOARD_TABLE[n].yellow)}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      if (page.id === 'switch') {
+        const ruleDesc = {
+          1: '規則 01：點字數字為【奇數 (1,3,5,7,9)】撥到 ▲ 上，否則撥 ▼ 下',
+          2: '規則 02：點字數字為【1、2、6 或 9】撥到 ▲ 上，否則撥 ▼ 下',
+          3: '規則 03：點字數字【大於 5 (6,7,8,9)】撥到 ▲ 上，否則撥 ▼ 下',
+          4: '規則 04：點字數字【大於紅燈下方數字】撥到 ▲ 上，否則撥 ▼ 下'
+        };
+        const rArr = gameState.manual.switchRules;
+        html += `
+          <p class="text-xs text-slate-300">詢問由左至右 4 個開關的<b>燈色與點字數字</b>（特別記住<b>紅燈</b>下方的數字），依本局各欄規則撥動：</p>
+          <div class="space-y-2 text-xs font-bold">
+            ${rArr.map((rId, idx) => `
+              <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center gap-3">
+                <span class="px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 font-black">第 ${idx+1} 欄</span>
+                <span>${ruleDesc[rId]}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      if (page.id === 'maze') {
+        html += `
+          <p class="text-xs text-slate-300">詢問拆彈員面板顯示的<b>迷宮編號 (#1～#6)</b>，指揮紅點走到綠旗（不可撞到粗白線牆壁）：</p>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
+            ${[1,2,3,4,5,6].map(id => {
+              const walls = MAZE_MAPS[id];
+              let cells = '';
+              for (let y = 0; y < 5; y++) {
+                for (let x = 0; x < 5; x++) {
+                  const rW = walls.includes(`${x},${y}-${x+1},${y}`);
+                  const bW = walls.includes(`${x},${y}-${x},${y+1}`);
+                  cells += `<div class="w-5 h-5 border border-slate-800 flex items-center justify-center text-[8px] text-slate-500 ${rW ? 'border-r-2 border-r-white' : ''} ${bW ? 'border-b-2 border-b-white' : ''}">${x===0&&y===0?'起':x===4&&y===4?'終':''}</div>`;
+                }
+              }
+              return `<div class="bg-slate-950 p-2 rounded-xl border border-slate-800 text-center"><div class="mono text-xs font-black text-yellow-300 mb-1">迷宮 #${id}</div><div class="inline-grid grid-cols-5">${cells}</div></div>`;
+            }).join('')}
+          </div>
+        `;
+      }
+
+      if (page.id === 'morse') {
+        const mMap = gameState.manual.morseMap;
+        html += `
+          <p class="text-xs text-slate-300">讓拆彈員播放摩斯長短音（<code>·</code> 短音 / <code>—</code> 長音），先解出<b>標準數字 (0～9)</b>，再查<b>本局轉換後的新數字</b>回報輸入：</p>
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs mono">
+            ${STANDARD_MORSE_DIGITS.map((item, idx) => `
+              <div class="bg-slate-800 p-2 rounded-xl border border-slate-700 text-center space-y-1">
+                <div class="text-slate-400">標準 ${item.digit}</div>
+                <div class="font-black text-yellow-300 tracking-widest">${item.code}</div>
+                <div class="bg-slate-950 py-1 rounded text-cyan-300 font-black">輸入 ➔ ${mMap[idx]}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
+      if (page.id === 'monkey') {
+        const colorZh = { red: '按 🔴 紅', blue: '按 🔵 藍', green: '按 🟢 綠', yellow: '按 🟡 黃' };
+        html += `
+          <p class="text-xs text-slate-300">詢問目前<b>階段 (1～4)</b> 與<b>閃爍燈號顏色</b>，對照下表指揮按下對應顏色按鈕：</p>
+          <table class="w-full text-xs text-center border border-slate-700 font-bold">
+            <thead class="bg-slate-800"><tr><th class="p-2 border border-slate-700">閃爍顏色</th><th class="border border-slate-700">階段 1</th><th class="border border-slate-700">階段 2</th><th class="border border-slate-700">階段 3</th><th class="border border-slate-700">階段 4</th></tr></thead>
+            <tbody>
+              <tr><td class="p-2 border border-slate-700 text-rose-400">🔴 閃紅燈</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.red[0]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.red[1]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.red[2]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.red[3]]}</td></tr>
+              <tr><td class="p-2 border border-slate-700 text-blue-400">🔵 閃藍燈</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.blue[0]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.blue[1]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.blue[2]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.blue[3]]}</td></tr>
+              <tr><td class="p-2 border border-slate-700 text-emerald-400">🟢 閃綠燈</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.green[0]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.green[1]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.green[2]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.green[3]]}</td></tr>
+              <tr><td class="p-2 border border-slate-700 text-yellow-300">🟡 閃黃燈</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.yellow[0]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.yellow[1]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.yellow[2]]}</td><td class="border border-slate-700">${colorZh[MONKEY_TABLE.yellow[3]]}</td></tr>
+            </tbody>
+          </table>
+        `;
+      }
+
+      container.innerHTML = html;
+
+      // 還原捲動位置
+      const newScrollEl = document.getElementById('manualScrollBox');
+      if (newScrollEl && savedScrollTop > 0) {
+        newScrollEl.scrollTop = savedScrollTop;
+      }
+    }
+
+    window.leaveRoom = () => {
+      if (unsubscribeRoom) unsubscribeRoom();
+      clearInterval(timerInterval);
+      location.reload();
+    };
+  </script>
+</body>
+</html>
