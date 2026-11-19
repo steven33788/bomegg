@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BOMBANANA // 雙人極限拆彈協議</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Noto+Sans+TC:wght@400;700;900&display=swap');
+    body {
+      font-family: 'Noto Sans TC', 'JetBrains Mono', sans-serif;
+      background-color: #090d16;
+      color: #e2e8f0;
+      user-select: none;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .led-glow-red { box-shadow: 0 0 14px #ef4444; }
+    .led-glow-green { box-shadow: 0 0 14px #22c55e; }
+    .led-glow-yellow { box-shadow: 0 0 14px #eab308; }
+    .led-glow-blue { box-shadow: 0 0 14px #3b82f6; }
+    .morse-bulb-on {
+      background-color: #fef08a !important;
+      border-color: #facc15 !important;
+      box-shadow: 0 0 18px #facc15, 0 0 36px #eab308, inset 0 0 10px #ffffff;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-6px); }
+      75% { transform: translateX(6px); }
+    }
+    .shake { animation: shake 0.25s ease-in-out 2; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 頂部狀態列 -->
+  <header class="bg-slate-900/90 border-b border-slate-800 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl">🍌</span>
+      <h1 class="font-black tracking-wider text-yellow-400 text-lg">BOMBANANA <span class="text-xs text-slate-400 font-normal">CO-OP DEFUSAL</span></h1>
+    </div>
+    <div id="topControls" class="hidden flex items-center gap-3">
+      <span id="roomBadge" class="mono text-xs bg-slate-800 px-2.5 py-1 rounded border border-slate-700 text-cyan-400">ROOM: ----</span>
+      <button id="switchRoleBtn" onclick="toggleSoloRole()" class="hidden text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 px-3 py-1 rounded font-bold">
+        切換視角 (單人測試)
+      </button>
+      <button onclick="leaveRoom()" class="text-xs bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 px-2.5 py-1 rounded">
+        離開
+      </button>
+    </div>
+  </header>
+
+  <!-- 階段 1：大廳畫面（建立或加入房間） -->
+  <main id="lobbyView" class="flex-1 flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
+      <div class="text-center space-y-1">
+        <div class="text-4xl mb-2">💣🍌</div>
+        <h2 class="text-xl font-black text-white">雙人高壓拆彈連線</h2>
+        <p class="text-xs text-slate-400">先建立或加入房間，進房後再自由分配拆彈與手冊角色</p>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">選擇拆彈難度（建房者設定）</label>
+          <select id="moduleCountSelect" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-white">
+            <option value="4">標準模式 (4 個隨機模組 / 4 分鐘)</option>
+            <option value="5">進階模式 (5 個隨機模組 / 4 分 30 秒)</option>
+            <option value="6">極限全開 (6 個全模組 / 5 分鐘)</option>
+          </select>
+        </div>
+
+        <div class="space-y-2.5">
+          <button onclick="createOnlineRoom()" class="w-full py-3 rounded-xl bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-sm shadow-lg transition">
+            建立雙人連線房間
+          </button>
+          <div class="flex gap-2">
+            <input id="joinCodeInput" maxlength="4" placeholder="輸入 4 碼房號" class="mono uppercase flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-center text-sm tracking-widest text-white" />
+            <button onclick="joinOnlineRoom()" class="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm">
+              加入房間
+            </button>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-800 pt-3">
+          <button onclick="startSoloPreview()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700">
+            單人模擬測試模式 (可隨時切換雙重視角)
+          </button>
+        </div>
+      </div>
+      <p id="lobbyMsg" class="text-center text-xs text-rose-400 min-h-[16px]"></p>
+    </div>
+  </main>
+
+  <!-- 階段 2：待機室選角畫面（進房後分配角色並開始） -->
+  <section id="waitingRoomView" class="hidden flex-1 flex items-center justify-center p-4">
+    <div class="max-w-xl w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-6">
+      <div class="text-center space-y-2 border-b border-slate-800 pb-4">
+        <div class="text-xs text-slate-400">分享此房號給你的搭檔</div>
+        <div class="flex items-center justify-center gap-3">
+          <span id="waitingRoomCode" class="mono text-4xl font-black tracking-[0.25em] text-yellow-400 bg-slate-950 px-5 py-2 rounded-xl border border-slate-700">----</span>
+          <button onclick="copyRoomCode()" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-600 px-3 py-2 rounded-xl text-slate-200 font-bold">
+            複製房號
+          </button>
+        </div>
+        <div id="waitingDifficultyText" class="mono text-xs text-cyan-300 pt-1">難度：標準模式 (4 模組 / 04:00)</div>
+      </div>
+
+      <div class="space-y-2">
+        <div class="text-xs text-slate-400 text-center">請各自點擊認領一個角色（可隨時點擊取消互換）</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+          <!-- 角色卡片：拆彈員 -->
+          <div id="cardDefuser" onclick="claimRole('defuser')" class="cursor-pointer rounded-2xl border-2 border-slate-700 bg-slate-800/50 hover:border-yellow-400/70 p-5 text-center space-y-2 transition">
+            <div class="text-4xl">🔧💣</div>
+            <h3 class="font-black text-base text-white">拆彈員 (Defuser)</h3>
+            <p class="text-xs text-slate-400 leading-relaxed">直接面對定時炸彈，負責描述機關線索並執行剪線、按鈕與解鎖操作。</p>
+            <div id="statusDefuser" class="pt-2">
+              <span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-slate-900 text-slate-400 border border-slate-700">點擊認領此角色</span>
+            </div>
+          </div>
+
+          <!-- 角色卡片：手冊員 -->
+          <div id="cardExpert" onclick="claimRole('expert')" class="cursor-pointer rounded-2xl border-2 border-slate-700 bg-slate-800/50 hover:border-cyan-400/70 p-5 text-center space-y-2 transition">
+            <div class="text-4xl">📖🧠</div>
+            <h3 class="font-black text-base text-white">手冊員 (Expert)</h3>
+            <p class="text-xs text-slate-400 leading-relaxed">查閱機密拆彈說明書，主動詢問炸彈序號與機關細節並下達精準指令。</p>
+            <div id="statusExpert" class="pt-2">
+              <span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-slate-900 text-slate-400 border border-slate-700">點擊認領此角色</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-2 space-y-2">
+        <button id="startMissionBtn" onclick="startMission()" disabled class="w-full py-3.5 rounded-xl bg-slate-800 text-slate-500 font-black text-sm transition cursor-not-allowed">
+          等待雙方都選好角色後即可開始...
+        </button>
+        <p id="waitingHintText" class="text-center text-xs text-slate-400">目前尚有角色未認領</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 階段 3A：遊戲主畫面（拆彈員視角） -->
+  <section id="defuserView" class="hidden flex-1 max-w-6xl w-full mx-auto p-4 space-y-4">
+    <!-- 炸彈頂部資訊殼層 -->
+    <div class="bg-slate-900 border-2 border-slate-700 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+      <div class="flex items-center gap-4">
+        <div class="bg-black border border-slate-700 px-4 py-2 rounded-xl text-center">
+          <div class="text-[10px] text-slate-400">REMAINING TIME</div>
+          <div id="timerDisplay" class="mono text-3xl font-black text-rose-500 tracking-wider">04:00</div>
+        </div>
+        <div>
+          <div class="text-xs text-slate-400">容錯失誤 (STRIKES)</div>
+          <div id="strikesDisplay" class="flex gap-2 mt-1">
+            <span class="w-6 h-6 rounded border border-slate-600 bg-slate-800 flex items-center justify-center text-xs font-black text-slate-600">X</span>
+            <span class="w-6 h-6 rounded border border-slate-600 bg-slate-800 flex items-center justify-center text-xs font-black text-slate-600">X</span>
+            <span class="w-6 h-6 rounded border border-slate-600 bg-slate-800 flex items-center justify-center text-xs font-black text-slate-600">X</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 炸彈側面硬體特徵 -->
+      <div class="flex flex-wrap gap-3 text-xs">
+        <div class="bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl">
+          <span class="text-slate-400 block text-[10px]">序號 SERIAL #</span>
+          <span id="serialDisplay" class="mono font-black text-yellow-300 text-sm">BN-4829</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl">
+          <span class="text-slate-400 block text-[10px]">香蕉電池數</span>
+          <span id="batteryDisplay" class="mono font-black text-emerald-400 text-sm">2 顆</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl">
+          <span class="text-slate-400 block text-[10px]">指示燈標籤</span>
+          <span id="indicatorDisplay" class="mono font-black text-cyan-300 text-sm">FRK [亮]</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 模組網格區 -->
+    <div id="modulesGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  </section>
+
+  <!-- 階段 3B：遊戲主畫面（手冊員視角） -->
+  <section id="expertView" class="hidden flex-1 max-w-5xl w-full mx-auto p-4 space-y-4">
+    <div class="bg-amber-950/30 border border-amber-500/40 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <h2 class="font-black text-amber-300 text-lg">📖 BOMBANANA 機密拆彈手冊 v2.6</h2>
+        <p class="text-xs text-amber-200/70">主動詢問拆彈員：「序號尾數、電池數量、指示燈標籤」以及各模組畫面細節！</p>
+      </div>
+      <div class="mono text-xs bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300">
+        狀態：<span id="expertStatusText" class="text-emerald-400 font-bold">拆彈進行中</span>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      <!-- 手冊 1：交叉色線 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+        <h3 class="font-black text-yellow-400 border-b border-slate-800 pb-1">1. 交叉色線 (Cross Wires)</h3>
+        <p class="text-xs text-slate-400">依序檢查下列條件，命中第一條即剪斷對應位置（由上往下數 1～5）：</p>
+        <ul class="text-xs space-y-1.5 text-slate-200 list-disc pl-4">
+          <li>若<span class="text-rose-400 font-bold">沒有紅線</span>，且序號尾數為<span class="text-cyan-300 font-bold">奇數</span> → 剪斷<b>第 2 條</b>。</li>
+          <li>若<span class="text-yellow-300 font-bold">黃線超過 1 條</span>，且電池數大於 1 顆 → 剪斷<b>最後一條黃線</b>。</li>
+          <li>若<span class="text-blue-400 font-bold">藍線剛好 1 條</span> → 剪斷<b>第 1 條</b>。</li>
+          <li>若<span class="text-emerald-400 font-bold">綠線超過 1 條</span> → 剪斷<b>第 4 條</b>。</li>
+          <li>以上皆不符合 → 剪斷<b>最後一條線（第 5 條）</b>。</li>
+        </ul>
+      </div>
+
+      <!-- 手冊 2：符號矩陣 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+        <h3 class="font-black text-yellow-400 border-b border-slate-800 pb-1">2. 符號矩陣 (Symbol Keypad)</h3>
+        <p class="text-xs text-slate-400">找出同時包含拆彈員畫面上「全部 4 個符號」的序列，並依該行<b>由左至右</b>順序點擊：</p>
+        <div class="space-y-1.5 mono text-base">
+          <div class="bg-slate-800 px-3 py-1.5 rounded-lg flex justify-between"><span class="text-xs text-slate-400 self-center">序列 A：</span><span>⚡ ➔ ☯ ➔ ☣ ➔ ♛ ➔ ★ ➔ ❄</span></div>
+          <div class="bg-slate-800 px-3 py-1.5 rounded-lg flex justify-between"><span class="text-xs text-slate-400 self-center">序列 B：</span><span>☀ ➔ ⚡ ➔ ❄ ➔ ♞ ➔ ☯ ➔ ♫</span></div>
+          <div class="bg-slate-800 px-3 py-1.5 rounded-lg flex justify-between"><span class="text-xs text-slate-400 self-center">序列 C：</span><span>♛ ➔ ♫ ➔ ♞ ➔ ☣ ➔ ☀ ➔ ★</span></div>
+        </div>
+      </div>
+
+      <!-- 手冊 3：香蕉能量閥 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+        <h3 class="font-black text-yellow-400 border-b border-slate-800 pb-1">3. 香蕉能量閥 (Banana Valve)</h3>
+        <p class="text-xs text-slate-400">詢問閥門上的「區域代號（ALPHA / BETA / GAMMA）」與電池數：</p>
+        <ul class="text-xs space-y-1.5 text-slate-200 list-disc pl-4">
+          <li><b>ALPHA 區：</b>在指針進入<span class="text-emerald-400 font-bold">綠色區</span>，且計時器秒數包含 <b>「3」</b> 時鎖定。</li>
+          <li><b>BETA 區：</b>在指針進入<span class="text-yellow-300 font-bold">黃色區</span>，且計時器秒數包含 <b>「7」</b> 時鎖定。</li>
+          <li><b>GAMMA 區：</b>若電池 ≥ 2 顆，在<span class="text-rose-400 font-bold">紅色區</span>且秒數包含 <b>「1」</b> 時鎖定；否則在<span class="text-emerald-400 font-bold">綠色區</span>任意秒數鎖定。</li>
+        </ul>
+      </div>
+
+      <!-- 手冊 4：摩斯求救訊號 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+        <h3 class="font-black text-yellow-400 border-b border-slate-800 pb-1">4. 摩斯 LED 燈訊號 (Morse Flasher)</h3>
+        <p class="text-xs text-slate-400">拆彈員觀察燈泡的<b>短閃（●）</b>與<b>長閃（▬）</b>節奏（長停頓後循環），對應頻率：</p>
+        <div class="grid grid-cols-2 gap-1.5 text-xs mono">
+          <div class="bg-slate-800 p-2 rounded"><b>SOS</b> (●●● ▬▬▬ ●●●) → <span class="text-cyan-300">3.515 MHz</span></div>
+          <div class="bg-slate-800 p-2 rounded"><b>BNZ</b> (▬●●● ▬● ▬▬●●) → <span class="text-cyan-300">3.542 MHz</span></div>
+          <div class="bg-slate-800 p-2 rounded"><b>APE</b> (●▬ ●▬▬● ●) → <span class="text-cyan-300">3.575 MHz</span></div>
+          <div class="bg-slate-800 p-2 rounded"><b>RUN</b> (●▬● ●●▬ ▬●) → <span class="text-cyan-300">3.600 MHz</span></div>
+        </div>
+      </div>
+
+      <!-- 手冊 5：盲眼迷宮 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+        <h3 class="font-black text-yellow-400 border-b border-slate-800 pb-1">5. 盲眼迷宮 (Blind Maze 5×5)</h3>
+        <p class="text-xs text-slate-400">指揮藍點走到紅旗，<b>不可撞到粗白線牆壁</b>（座標從左上 (1,1) 到右下 (5,5)）：</p>
+        <div id="manualMazePreview" class="flex justify-center py-1"></div>
+      </div>
+
+      <!-- 手冊 6：四色記憶迴路 -->
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+        <h3 class="font-black text-yellow-400 border-b border-slate-800 pb-1">6. 四色記憶迴路 (Simon Memory)</h3>
+        <p class="text-xs text-slate-400">依目前「失誤次數」將燈號顏色轉換後按下（共 3 輪）：</p>
+        <table class="w-full text-xs text-center border border-slate-700">
+          <thead class="bg-slate-800 text-slate-300">
+            <tr><th class="p-1 border border-slate-700">閃燈顏色</th><th class="p-1 border border-slate-700">0 失誤</th><th class="p-1 border border-slate-700">1 失誤</th><th class="p-1 border border-slate-700">2 失誤</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="p-1 border border-slate-700 text-rose-400 font-bold">紅燈</td><td class="border border-slate-700">按 藍</td><td class="border border-slate-700">按 黃</td><td class="border border-slate-700">按 綠</td></tr>
+            <tr><td class="p-1 border border-slate-700 text-blue-400 font-bold">藍燈</td><td class="border border-slate-700">按 紅</td><td class="border border-slate-700">按 綠</td><td class="border border-slate-700">按 黃</td></tr>
+            <tr><td class="p-1 border border-slate-700 text-emerald-400 font-bold">綠燈</td><td class="border border-slate-700">按 黃</td><td class="border border-slate-700">按 藍</td><td class="border border-slate-700">按 紅</td></tr>
+            <tr><td class="p-1 border border-slate-700 text-yellow-300 font-bold">黃燈</td><td class="border border-slate-700">按 綠</td><td class="border border-slate-700">按 紅</td><td class="border border-slate-700">按 藍</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 結算彈窗 -->
+  <div id="endModal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div class="bg-slate-900 border-2 border-slate-700 rounded-2xl max-w-sm w-full p-6 text-center space-y-4">
+      <div id="endIcon" class="text-5xl">🎉</div>
+      <h2 id="endTitle" class="text-2xl font-black text-emerald-400">拆彈成功！</h2>
+      <p id="endDesc" class="text-sm text-slate-300">剩餘時間：01:42｜失誤次數：1 次</p>
+      <button onclick="leaveRoom()" class="w-full py-2.5 rounded-xl bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-sm">
+        返回大廳再來一局
+      </button>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    // =========================================================================
+    // 【請在此貼上你獨立建立的 bombanana 專案 Firebase 設定金鑰】
+    // =========================================================================
+    const STANDALONE_FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCVaTPh3HPgVdy6hheNwihEWsFCgH7Mlwo",
+       authDomain: "bomegg-5e1f0.firebaseapp.com",
+       projectId: "bomegg-5e1f0",
+       storageBucket: "bomegg-5e1f0.firebasestorage.app",
+       messagingSenderId: "899783837392",
+       appId: "1:899783837392:web:bcd3cbdcea8064b21300d5",
+       measurementId: "G-3KEZGYERKS"
+    };
+
+    let db = null;
+    if (STANDALONE_FIREBASE_CONFIG.apiKey) {
+      const app = initializeApp(STANDALONE_FIREBASE_CONFIG);
+      db = getFirestore(app);
+    }
+
+    // 簡易合成音效引擎
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq = 520, duration = 0.08, type = 'sine') {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // 每位瀏覽器分頁的獨立玩家識別碼
+    const myPlayerId = 'P_' + Math.random().toString(36).substring(2, 10);
+
+    let myRole = null; // 'defuser' | 'expert' | null
+    let isSolo = false;
+    let roomId = null;
+    let unsubscribeRoom = null;
+    let timerInterval = null;
+    let valveInterval = null;
+    let intervalsStarted = false;
+
+    // 摩斯 LED 閃爍時間軸狀態
+    let morseTimeline = [];
+    let morseTotalDuration = 0;
+    let morseStartTime = 0;
+    let morseAnimFrame = null;
+
+    let gameState = null;
+
+    // 將摩斯密碼字串轉成精確毫秒時間軸
+    function buildMorseTimeline(patternStr) {
+      const events = [];
+      let t = 0;
+      const letters = patternStr.trim().split(/\s+/);
+      letters.forEach((letter, lIdx) => {
+        for (let i = 0; i < letter.length; i++) {
+          const ch = letter[i];
+          const onDur = ch === '▬' ? 750 : 250;
+          events.push({ start: t, end: t + onDur, on: true });
+          t += onDur;
+          if (i < letter.length - 1) {
+            events.push({ start: t, end: t + 250, on: false });
+            t += 250;
+          }
+        }
+        if (lIdx < letters.length - 1) {
+          events.push({ start: t, end: t + 900, on: false });
+          t += 900;
+        }
+      });
+      events.push({ start: t, end: t + 2000, on: false, isEndPause: true });
+      t += 2000;
+      return { events, total: t };
+    }
+
+    function startMorseAnimation(patternStr) {
+      if (morseAnimFrame) cancelAnimationFrame(morseAnimFrame);
+      const built = buildMorseTimeline(patternStr);
+      morseTimeline = built.events;
+      morseTotalDuration = built.total;
+      morseStartTime = performance.now();
+
+      function tick(now) {
+        if (!gameState || gameState.status !== 'playing') return;
+        const morseMod = gameState.modules.find(m => m.id === 'morse');
+        const bulbEl = document.getElementById('morseLedBulb');
+        const statusEl = document.getElementById('morseCycleStatus');
+
+        if (morseMod && !morseMod.solved && bulbEl) {
+          const elapsed = (now - morseStartTime) % morseTotalDuration;
+          const currentSeg = morseTimeline.find(seg => elapsed >= seg.start && elapsed < seg.end);
+          if (currentSeg && currentSeg.on) {
+            bulbEl.classList.add('morse-bulb-on');
+            if (statusEl) statusEl.textContent = 'SIGNAL: ON';
+          } else {
+            bulbEl.classList.remove('morse-bulb-on');
+            if (statusEl) {
+              statusEl.textContent = (currentSeg && currentSeg.isEndPause) ? 'LOOP RESET...' : 'SIGNAL: OFF';
+            }
+          }
+        } else if (morseMod && morseMod.solved && bulbEl) {
+          bulbEl.classList.remove('morse-bulb-on');
+          if (statusEl) statusEl.textContent = 'LOCKED';
+        }
+        morseAnimFrame = requestAnimationFrame(tick);
+      }
+      morseAnimFrame = requestAnimationFrame(tick);
+    }
+
+    window.resetMorseCycle = () => {
+      morseStartTime = performance.now();
+      playBeep(520, 0.05);
+    };
+
+    // 產生隨機炸彈資料（初始狀態為 'waiting' 待機選角）
+    function generateBombData(moduleCount) {
+      const serialNum = 'BN-' + Math.floor(1000 + Math.random() * 9000);
+      const batteries = Math.floor(Math.random() * 4);
+      const indicators = ['FRK [亮]', 'CAR [滅]', 'BOB [亮]', 'SIG [滅]'];
+      const indicator = indicators[Math.floor(Math.random() * indicators.length)];
+      const timeSec = moduleCount === 4 ? 240 : moduleCount === 5 ? 270 : 300;
+
+      // 1. 交叉色線
+      const wireColors = ['red', 'yellow', 'blue', 'green', 'white'];
+      const wires = Array.from({ length: 5 }, () => wireColors[Math.floor(Math.random() * wireColors.length)]);
+      const lastDigitOdd = parseInt(serialNum.slice(-1)) % 2 === 1;
+      let targetWireIdx = 4;
+      if (!wires.includes('red') && lastDigitOdd) targetWireIdx = 1;
+      else if (wires.filter(c => c === 'yellow').length > 1 && batteries > 1) targetWireIdx = wires.lastIndexOf('yellow');
+      else if (wires.filter(c => c === 'blue').length === 1) targetWireIdx = 0;
+      else if (wires.filter(c => c === 'green').length > 1) targetWireIdx = 3;
+
+      // 2. 符號矩陣
+      const seqs = [
+        ['⚡', '☯', '☣', '♛', '★', '❄'],
+        ['☀', '⚡', '❄', '♞', '☯', '♫'],
+        ['♛', '♫', '♞', '☣', '☀', '★']
+      ];
+      const chosenSeq = seqs[Math.floor(Math.random() * seqs.length)];
+      const pickedIndices = [0, 1, 2, 3, 4, 5].sort(() => Math.random() - 0.5).slice(0, 4);
+      const keypadSymbols = [...pickedIndices].sort(() => Math.random() - 0.5).map(i => chosenSeq[i]);
+      const keypadOrder = [...pickedIndices].sort((a, b) => a - b).map(i => chosenSeq[i]);
+
+      // 3. 香蕉能量閥
+      const zones = ['ALPHA', 'BETA', 'GAMMA'];
+      const valveZone = zones[Math.floor(Math.random() * zones.length)];
+
+      // 4. 摩斯訊號
+      const morseWords = [
+        { word: 'SOS', pattern: '●●● ▬▬▬ ●●●', freq: '3.515 MHz' },
+        { word: 'BNZ', pattern: '▬●●● ▬● ▬▬●●', freq: '3.542 MHz' },
+        { word: 'APE', pattern: '●▬ ●▬▬● ●', freq: '3.575 MHz' },
+        { word: 'RUN', pattern: '●▬● ●●▬ ▬●', freq: '3.600 MHz' }
+      ];
+      const morseTarget = morseWords[Math.floor(Math.random() * morseWords.length)];
+
+      // 5. 盲眼迷宮
+      const mazeWalls = [
+        '0,1-1,1', '1,0-1,1', '2,1-2,2', '3,1-4,1',
+        '1,2-1,3', '2,3-3,3', '3,2-3,3', '0,3-0,4', '2,4-3,4'
+      ];
+
+      // 6. 四色記憶迴路
+      const simonColors = ['red', 'blue', 'green', 'yellow'];
+      const simonSeq = Array.from({ length: 3 }, () => simonColors[Math.floor(Math.random() * 4)]);
+
+      const allModules = [
+        { id: 'wires', type: 'wires', title: '交叉色線', solved: false, wires, cut: [false, false, false, false, false], targetWireIdx },
+        { id: 'keypad', type: 'keypad', title: '符號矩陣', solved: false, symbols: keypadSymbols, order: keypadOrder, progress: 0 },
+        { id: 'valve', type: 'valve', title: '香蕉能量閥', solved: false, zone: valveZone, pointer: 15 },
+        { id: 'morse', type: 'morse', title: '摩斯 LED 訊號', solved: false, target: morseTarget },
+        { id: 'maze', type: 'maze', title: '盲眼迷宮', solved: false, pos: { x: 0, y: 0 }, goal: { x: 4, y: 4 }, walls: mazeWalls },
+        { id: 'simon', type: 'simon', title: '四色記憶迴路', solved: false, seq: simonSeq, stage: 1, inputIdx: 0 }
+      ];
+
+      return {
+        status: 'waiting', // waiting -> playing -> won / exploded
+        roles: {
+          defuser: null,
+          expert: null
+        },
+        moduleCount,
+        timeLeft: timeSec,
+        strikes: 0,
+        maxStrikes: 3,
+        serial: serialNum,
+        batteries,
+        indicator,
+        modules: allModules.slice(0, moduleCount)
+      };
+    }
+
+    // 1. 建立雙人房間（進入待機選角室）
+    window.createOnlineRoom = async () => {
+      if (!db) {
+        document.getElementById('lobbyMsg').textContent = '請先在程式碼中填入 Firebase 金鑰，或點下方「單人模擬測試模式」！';
+        return;
+      }
+      const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const count = parseInt(document.getElementById('moduleCountSelect').value);
+      const data = generateBombData(count);
+      await setDoc(doc(db, 'bombanana_rooms', code), data);
+      isSolo = false;
+      enterRoom(code, data);
+    };
+
+    // 2. 加入雙人房間（進入待機選角室）
+    window.joinOnlineRoom = async () => {
+      if (!db) {
+        document.getElementById('lobbyMsg').textContent = '尚未設定 Firebase 金鑰，無法連線加入房間。';
+        return;
+      }
+      const code = document.getElementById('joinCodeInput').value.trim().toUpperCase();
+      if (code.length !== 4) {
+        document.getElementById('lobbyMsg').textContent = '請輸入正確的 4 碼房號';
+        return;
+      }
+      const snap = await getDoc(doc(db, 'bombanana_rooms', code));
+      if (!snap.exists()) {
+        document.getElementById('lobbyMsg').textContent = '找不到此房間，請確認房號';
+        return;
+      }
+      isSolo = false;
+      enterRoom(code, snap.data());
+    };
+
+    // 單人模擬測試（直接開始並可切換視角）
+    window.startSoloPreview = () => {
+      isSolo = true;
+      myRole = 'defuser';
+      const count = parseInt(document.getElementById('moduleCountSelect').value);
+      const data = generateBombData(count);
+      data.status = 'playing';
+      data.roles = { defuser: myPlayerId, expert: 'SOLO_BOT' };
+      enterRoom('SOLO', data);
+    };
+
+    window.toggleSoloRole = () => {
+      myRole = myRole === 'defuser' ? 'expert' : 'defuser';
+      updateScreenByState();
+    };
+
+    window.copyRoomCode = () => {
+      if (!roomId) return;
+      navigator.clipboard?.writeText(roomId);
+      playBeep(620, 0.06);
+      const hint = document.getElementById('waitingHintText');
+      if (hint) hint.textContent = `已複製房號 ${roomId}！快貼給搭檔輸入加入`;
+    };
+
+    // 待機室認領／取消角色
+    window.claimRole = async (role) => {
+      if (!gameState || gameState.status !== 'waiting') return;
+      const currentHolder = gameState.roles[role];
+
+      // 若該角色已被對方佔用，不可搶奪
+      if (currentHolder && currentHolder !== myPlayerId) {
+        playBeep(200, 0.12, 'sawtooth');
+        return;
+      }
+
+      playBeep(560, 0.07);
+      // 若自己已選該角色 -> 取消認領；否則清除自己原本另一個角色並認領新角色
+      if (currentHolder === myPlayerId) {
+        gameState.roles[role] = null;
+      } else {
+        if (gameState.roles.defuser === myPlayerId) gameState.roles.defuser = null;
+        if (gameState.roles.expert === myPlayerId) gameState.roles.expert = null;
+        gameState.roles[role] = myPlayerId;
+      }
+
+      await syncState();
+    };
+
+    // 雙方就位後正式開始遊戲
+    window.startMission = async () => {
+      if (!gameState || gameState.status !== 'waiting') return;
+      if (!gameState.roles.defuser || !gameState.roles.expert) return;
+      playBeep(660, 0.08);
+      setTimeout(() => playBeep(880, 0.14), 90);
+      gameState.status = 'playing';
+      await syncState();
+    };
+
+    function enterRoom(code, initialData) {
+      roomId = code;
+      gameState = initialData;
+      document.getElementById('lobbyView').classList.add('hidden');
+      document.getElementById('topControls').classList.remove('hidden');
+      document.getElementById('roomBadge').textContent = `ROOM: ${code}`;
+      if (isSolo) document.getElementById('switchRoleBtn').classList.remove('hidden');
+
+      renderManualMaze();
+      updateScreenByState();
+
+      if (!isSolo && db) {
+        unsubscribeRoom = onSnapshot(doc(db, 'bombanana_rooms', code), (docSnap) => {
+          if (docSnap.exists()) {
+            gameState = docSnap.data();
+            updateScreenByState();
+          }
+        });
+      }
+    }
+
+    function updateScreenByState() {
+      if (!gameState) return;
+
+      // 根據 Firestore 裡的 roles 自動確認自己目前的身分
+      if (!isSolo && gameState.roles) {
+        if (gameState.roles.defuser === myPlayerId) myRole = 'defuser';
+        else if (gameState.roles.expert === myPlayerId) myRole = 'expert';
+        else myRole = null;
+      }
+
+      // 1. 待機選角畫面
+      if (gameState.status === 'waiting') {
+        document.getElementById('waitingRoomView').classList.remove('hidden');
+        document.getElementById('defuserView').classList.add('hidden');
+        document.getElementById('expertView').classList.add('hidden');
+        renderWaitingRoom();
+        return;
+      }
+
+      // 2. 遊戲進行中或已結算：隱藏待機室並啟動遊戲計時器與 LED 動畫
+      document.getElementById('waitingRoomView').classList.add('hidden');
+      document.getElementById('defuserView').classList.toggle('hidden', myRole !== 'defuser');
+      document.getElementById('expertView').classList.toggle('hidden', myRole !== 'expert');
+
+      if (!intervalsStarted) {
+        intervalsStarted = true;
+        startGameLoops();
+      }
+
+      renderGame();
+    }
+
+    function renderWaitingRoom() {
+      document.getElementById('waitingRoomCode').textContent = roomId;
+      const mins = String(Math.floor(gameState.timeLeft / 60)).padStart(2, '0');
+      document.getElementById('waitingDifficultyText').textContent = `任務配置：${gameState.moduleCount} 個隨機模組 ｜ 倒數 ${mins}:00`;
+
+      const defHolder = gameState.roles?.defuser;
+      const expHolder = gameState.roles?.expert;
+
+      // 更新「拆彈員」卡片外觀
+      const cardDef = document.getElementById('cardDefuser');
+      const statusDef = document.getElementById('statusDefuser');
+      if (defHolder === myPlayerId) {
+        cardDef.className = 'cursor-pointer rounded-2xl border-2 border-yellow-400 bg-yellow-400/15 p-5 text-center space-y-2 transition shadow-lg';
+        statusDef.innerHTML = '<span class="inline-block text-xs font-black px-3 py-1 rounded-full bg-yellow-400 text-slate-950">✓ 你已選擇此角色 (點擊取消)</span>';
+      } else if (defHolder) {
+        cardDef.className = 'cursor-not-allowed rounded-2xl border-2 border-slate-700 bg-slate-950/80 opacity-60 p-5 text-center space-y-2 transition';
+        statusDef.innerHTML = '<span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">🔒 搭檔已認領</span>';
+      } else {
+        cardDef.className = 'cursor-pointer rounded-2xl border-2 border-slate-700 bg-slate-800/50 hover:border-yellow-400/70 p-5 text-center space-y-2 transition';
+        statusDef.innerHTML = '<span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">點擊認領此角色</span>';
+      }
+
+      // 更新「手冊員」卡片外觀
+      const cardExp = document.getElementById('cardExpert');
+      const statusExp = document.getElementById('statusExpert');
+      if (expHolder === myPlayerId) {
+        cardExp.className = 'cursor-pointer rounded-2xl border-2 border-cyan-400 bg-cyan-400/15 p-5 text-center space-y-2 transition shadow-lg';
+        statusExp.innerHTML = '<span class="inline-block text-xs font-black px-3 py-1 rounded-full bg-cyan-400 text-slate-950">✓ 你已選擇此角色 (點擊取消)</span>';
+      } else if (expHolder) {
+        cardExp.className = 'cursor-not-allowed rounded-2xl border-2 border-slate-700 bg-slate-950/80 opacity-60 p-5 text-center space-y-2 transition';
+        statusExp.innerHTML = '<span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">🔒 搭檔已認領</span>';
+      } else {
+        cardExp.className = 'cursor-pointer rounded-2xl border-2 border-slate-700 bg-slate-800/50 hover:border-cyan-400/70 p-5 text-center space-y-2 transition';
+        statusExp.innerHTML = '<span class="inline-block text-xs font-bold px-3 py-1 rounded-full bg-slate-900 text-slate-300 border border-slate-700">點擊認領此角色</span>';
+      }
+
+      // 檢查是否雙方都已就位
+      const startBtn = document.getElementById('startMissionBtn');
+      const hintText = document.getElementById('waitingHintText');
+      if (defHolder && expHolder) {
+        startBtn.disabled = false;
+        startBtn.className = 'w-full py-3.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-sm shadow-lg transition cursor-pointer';
+        startBtn.textContent = '🚀 雙方已就位！啟動定時炸彈';
+        hintText.textContent = '按下按鈕後將立即進入遊戲並開始倒數計時';
+        hintText.className = 'text-center text-xs text-emerald-400 font-bold';
+      } else {
+        startBtn.disabled = true;
+        startBtn.className = 'w-full py-3.5 rounded-xl bg-slate-800 text-slate-500 font-black text-sm transition cursor-not-allowed';
+        startBtn.textContent = '等待雙方都選好角色後即可開始...';
+        const missing = !defHolder && !expHolder ? '拆彈員、手冊員' : !defHolder ? '拆彈員' : '手冊員';
+        hintText.textContent = `目前尚缺：${missing}`;
+        hintText.className = 'text-center text-xs text-slate-400';
+      }
+    }
+
+    function startGameLoops() {
+      const morseMod = gameState.modules.find(m => m.id === 'morse');
+      if (morseMod && morseMod.target && morseMod.target.pattern) {
+        startMorseAnimation(morseMod.target.pattern);
+      }
+
+      clearInterval(timerInterval);
+      timerInterval = setInterval(async () => {
+        if (!gameState || gameState.status !== 'playing') return;
+        if (myRole === 'defuser' || isSolo) {
+          gameState.timeLeft -= 1;
+          if (gameState.timeLeft <= 10) playBeep(880, 0.05);
+          if (gameState.timeLeft <= 0) {
+            gameState.timeLeft = 0;
+            gameState.status = 'exploded';
+            playBeep(140, 0.6, 'sawtooth');
+          }
+          await syncState();
+        }
+      }, 1000);
+
+      clearInterval(valveInterval);
+      valveInterval = setInterval(() => {
+        if (!gameState || gameState.status !== 'playing') return;
+        const valveMod = gameState.modules.find(m => m.id === 'valve');
+        if (valveMod && !valveMod.solved) {
+          valveMod.pointer = (valveMod.pointer + 4) % 100;
+          const bar = document.getElementById('valvePointerBar');
+          if (bar) bar.style.left = valveMod.pointer + '%';
+        }
+      }, 60);
+    }
+
+    async function syncState() {
+      updateScreenByState();
+      if (!isSolo && db && roomId) {
+        await updateDoc(doc(db, 'bombanana_rooms', roomId), gameState);
+      }
+    }
+
+    async function triggerStrike(reason) {
+      playBeep(160, 0.25, 'sawtooth');
+      gameState.strikes += 1;
+      const grid = document.getElementById('modulesGrid');
+      if (grid) {
+        grid.classList.remove('shake');
+        void grid.offsetWidth;
+        grid.classList.add('shake');
+      }
+      if (gameState.strikes >= gameState.maxStrikes) {
+        gameState.status = 'exploded';
+      }
+      await syncState();
+    }
+
+    async function checkWinCondition() {
+      if (gameState.modules.every(m => m.solved)) {
+        gameState.status = 'won';
+        playBeep(660, 0.12);
+        setTimeout(() => playBeep(880, 0.25), 130);
+      }
+      await syncState();
+    }
+
+    function renderGame() {
+      if (!gameState || gameState.status === 'waiting') return;
+      const mins = String(Math.floor(gameState.timeLeft / 60)).padStart(2, '0');
+      const secs = String(gameState.timeLeft % 60).padStart(2, '0');
+      document.getElementById('timerDisplay').textContent = `${mins}:${secs}`;
+      document.getElementById('serialDisplay').textContent = gameState.serial;
+      document.getElementById('batteryDisplay').textContent = `${gameState.batteries} 顆`;
+      document.getElementById('indicatorDisplay').textContent = gameState.indicator;
+
+      const strikesEl = document.getElementById('strikesDisplay');
+      strikesEl.innerHTML = '';
+      for (let i = 0; i < gameState.maxStrikes; i++) {
+        const active = i < gameState.strikes;
+        strikesEl.innerHTML += `<span class="w-6 h-6 rounded border ${active ? 'border-rose-500 bg-rose-500/20 text-rose-400 led-glow-red' : 'border-slate-700 bg-slate-800 text-slate-600'} flex items-center justify-center text-xs font-black">X</span>`;
+      }
+
+      if (gameState.status !== 'playing') {
+        if (morseAnimFrame) cancelAnimationFrame(morseAnimFrame);
+        document.getElementById('endModal').classList.remove('hidden');
+        document.getElementById('expertStatusText').textContent = gameState.status === 'won' ? '任務成功！' : '炸彈已引爆！';
+        if (gameState.status === 'won') {
+          document.getElementById('endIcon').textContent = '🍌🎉';
+          document.getElementById('endTitle').textContent = '成功拆除炸彈！';
+          document.getElementById('endTitle').className = 'text-2xl font-black text-emerald-400';
+        } else {
+          document.getElementById('endIcon').textContent = '💥💀';
+          document.getElementById('endTitle').textContent = 'BOOM！拆彈失敗';
+          document.getElementById('endTitle').className = 'text-2xl font-black text-rose-500';
+        }
+        document.getElementById('endDesc').textContent = `剩餘時間：${mins}:${secs} ｜ 累計失誤：${gameState.strikes} 次`;
+        return;
+      }
+
+      const grid = document.getElementById('modulesGrid');
+      grid.innerHTML = '';
+      gameState.modules.forEach((mod, mIdx) => {
+        const card = document.createElement('div');
+        card.className = `bg-slate-900 border-2 ${mod.solved ? 'border-emerald-500/60' : 'border-slate-700'} rounded-2xl p-4 flex flex-col justify-between space-y-3 relative`;
+
+        const header = `
+          <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+            <span class="font-black text-sm text-slate-200">${mod.title}</span>
+            <span class="w-3.5 h-3.5 rounded-full ${mod.solved ? 'bg-emerald-400 led-glow-green' : 'bg-slate-700'}"></span>
+          </div>
+        `;
+
+        let body = '';
+        if (mod.id === 'wires') {
+          const colorMap = {
+            red: 'bg-rose-500', yellow: 'bg-yellow-400', blue: 'bg-blue-500',
+            green: 'bg-emerald-500', white: 'bg-slate-200'
+          };
+          body = `<div class="space-y-2.5 py-2">` + mod.wires.map((c, wIdx) => `
+            <button onclick="handleCutWire(${mIdx}, ${wIdx})" ${mod.solved || mod.cut[wIdx] ? 'disabled' : ''} class="w-full flex items-center gap-2 group">
+              <span class="mono text-xs text-slate-500 w-4">${wIdx + 1}</span>
+              <div class="flex-1 h-3 rounded-full ${colorMap[c]} ${mod.cut[wIdx] ? 'opacity-20 border-dashed border border-white' : 'group-hover:brightness-125'} transition"></div>
+            </button>
+          `).join('') + `</div>`;
+        }
+
+        if (mod.id === 'keypad') {
+          body = `<div class="grid grid-cols-2 gap-2.5 py-1">` + mod.symbols.map((sym) => {
+            const clicked = mod.order.indexOf(sym) < mod.progress;
+            return `<button onclick="handleKeypad(${mIdx}, '${sym}')" ${mod.solved || clicked ? 'disabled' : ''} class="py-3 rounded-xl text-2xl font-bold border ${clicked ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300' : 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-white'}">${sym}</button>`;
+          }).join('') + `</div>`;
+        }
+
+        if (mod.id === 'valve') {
+          body = `
+            <div class="space-y-3 py-1">
+              <div class="text-center mono text-xs bg-slate-800 py-1 rounded text-amber-300 font-bold">ZONE: ${mod.zone}</div>
+              <div class="relative h-6 rounded-lg overflow-hidden flex border border-slate-600">
+                <div class="w-1/3 bg-emerald-500/70 flex items-center justify-center text-[10px] font-bold text-black">綠區</div>
+                <div class="w-1/3 bg-yellow-400/70 flex items-center justify-center text-[10px] font-bold text-black">黃區</div>
+                <div class="w-1/3 bg-rose-500/70 flex items-center justify-center text-[10px] font-bold text-black">紅區</div>
+                <div id="valvePointerBar" style="left:${mod.pointer}%" class="absolute top-0 bottom-0 w-1.5 bg-white shadow"></div>
+              </div>
+              <button onclick="handleValveLock(${mIdx})" ${mod.solved ? 'disabled' : ''} class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs">
+                鎖定能量閥 (LOCK)
+              </button>
+            </div>
+          `;
+        }
+
+        if (mod.id === 'morse') {
+          body = `
+            <div class="space-y-3 py-1">
+              <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <div id="morseLedBulb" class="w-9 h-9 rounded-full bg-amber-950/80 border-2 border-amber-900/80 transition-colors duration-75 flex-shrink-0"></div>
+                  <div>
+                    <div id="morseCycleStatus" class="mono text-[11px] font-bold text-amber-400">SIGNAL: OFF</div>
+                    <div class="text-[10px] text-slate-400">觀察短亮 / 長亮節奏</div>
+                  </div>
+                </div>
+                <button onclick="resetMorseCycle()" ${mod.solved ? 'disabled' : ''} class="mono text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-2 py-1 rounded">
+                  ↻ 重播
+                </button>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5 text-xs mono">
+                ${['3.515 MHz', '3.542 MHz', '3.575 MHz', '3.600 MHz'].map(f => `
+                  <button onclick="handleMorse(${mIdx}, '${f}')" ${mod.solved ? 'disabled' : ''} class="py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 border border-slate-700 text-cyan-300">${f}</button>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        if (mod.id === 'maze') {
+          let cells = '';
+          for (let y = 0; y < 5; y++) {
+            for (let x = 0; x < 5; x++) {
+              const isPlayer = mod.pos.x === x && mod.pos.y === y;
+              const isGoal = mod.goal.x === x && mod.goal.y === y;
+              cells += `<div class="w-7 h-7 border border-slate-800 flex items-center justify-center text-xs ${isPlayer ? 'bg-blue-500 rounded-full text-white font-bold' : isGoal ? 'text-rose-400' : 'text-slate-700'}">${isPlayer ? '●' : isGoal ? '🚩' : '·'}</div>`;
+            }
+          }
+          body = `
+            <div class="flex items-center justify-around py-1">
+              <div class="grid grid-cols-5 bg-black p-1 rounded-lg border border-slate-700">${cells}</div>
+              <div class="grid grid-cols-3 gap-1 w-24">
+                <div></div><button onclick="handleMazeMove(${mIdx}, 0, -1)" class="bg-slate-800 p-1.5 rounded text-xs">▲</button><div></div>
+                <button onclick="handleMazeMove(${mIdx}, -1, 0)" class="bg-slate-800 p-1.5 rounded text-xs">◀</button>
+                <div></div>
+                <button onclick="handleMazeMove(${mIdx}, 1, 0)" class="bg-slate-800 p-1.5 rounded text-xs">▶</button>
+                <div></div><button onclick="handleMazeMove(${mIdx}, 0, 1)" class="bg-slate-800 p-1.5 rounded text-xs">▼</button><div></div>
+              </div>
+            </div>
+          `;
+        }
+
+        if (mod.id === 'simon') {
+          const activeSeq = mod.seq.slice(0, mod.stage);
+          const colorNames = { red: '🔴 紅', blue: '🔵 藍', green: '🟢 綠', yellow: '🟡 黃' };
+          body = `
+            <div class="space-y-2.5 py-1 text-center">
+              <div class="bg-black border border-slate-700 rounded-xl py-2 text-xs">
+                第 ${mod.stage}/3 輪閃燈：<span class="font-bold text-white">${activeSeq.map(c => colorNames[c]).join(' ➔ ')}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button onclick="handleSimon(${mIdx}, 'red')" class="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 font-bold text-xs">紅色</button>
+                <button onclick="handleSimon(${mIdx}, 'blue')" class="py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-bold text-xs">藍色</button>
+                <button onclick="handleSimon(${mIdx}, 'green')" class="py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 font-bold text-xs">綠色</button>
+                <button onclick="handleSimon(${mIdx}, 'yellow')" class="py-2 rounded-lg bg-yellow-400 hover:bg-yellow-300 text-black font-bold text-xs">黃色</button>
+              </div>
+            </div>
+          `;
+        }
+
+        card.innerHTML = header + body;
+        grid.appendChild(card);
+      });
+    }
+
+    function renderManualMaze() {
+      const container = document.getElementById('manualMazePreview');
+      if (!container) return;
+      const walls = [
+        '0,1-1,1', '1,0-1,1', '2,1-2,2', '3,1-4,1',
+        '1,2-1,3', '2,3-3,3', '3,2-3,3', '0,3-0,4', '2,4-3,4'
+      ];
+      let html = '<div class="grid grid-cols-5 bg-slate-950 p-1.5 rounded-lg border border-slate-700">';
+      for (let y = 0; y < 5; y++) {
+        for (let x = 0; x < 5; x++) {
+          const rightWall = walls.includes(`${x},${y}-${x+1},${y}`);
+          const bottomWall = walls.includes(`${x},${y}-${x},${y+1}`);
+          html += `<div class="w-8 h-8 border border-slate-800 flex items-center justify-center text-[10px] text-slate-500 ${rightWall ? 'border-r-2 border-r-white' : ''} ${bottomWall ? 'border-b-2 border-b-white' : ''}">${x===0&&y===0?'起':x===4&&y===4?'終':''}</div>`;
+        }
+      }
+      html += '</div>';
+      container.innerHTML = html;
+    }
+
+    window.handleCutWire = async (mIdx, wIdx) => {
+      const mod = gameState.modules[mIdx];
+      mod.cut[wIdx] = true;
+      if (wIdx === mod.targetWireIdx) {
+        playBeep(640, 0.1);
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await triggerStrike('剪錯電線');
+      }
+    };
+
+    window.handleKeypad = async (mIdx, sym) => {
+      const mod = gameState.modules[mIdx];
+      if (mod.order[mod.progress] === sym) {
+        playBeep(580, 0.08);
+        mod.progress += 1;
+        if (mod.progress >= 4) {
+          mod.solved = true;
+          await checkWinCondition();
+        } else {
+          await syncState();
+        }
+      } else {
+        mod.progress = 0;
+        await triggerStrike('符號順序錯誤');
+      }
+    };
+
+    window.handleValveLock = async (mIdx) => {
+      const mod = gameState.modules[mIdx];
+      const secStr = String(gameState.timeLeft % 60).padStart(2, '0');
+      const inGreen = mod.pointer < 33.3;
+      const inYellow = mod.pointer >= 33.3 && mod.pointer < 66.6;
+      const inRed = mod.pointer >= 66.6;
+
+      let ok = false;
+      if (mod.zone === 'ALPHA' && inGreen && secStr.includes('3')) ok = true;
+      if (mod.zone === 'BETA' && inYellow && secStr.includes('7')) ok = true;
+      if (mod.zone === 'GAMMA') {
+        if (gameState.batteries >= 2 && inRed && secStr.includes('1')) ok = true;
+        if (gameState.batteries < 2 && inGreen) ok = true;
+      }
+
+      if (ok) {
+        playBeep(700, 0.12);
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await triggerStrike('能量閥時機錯誤');
+      }
+    };
+
+    window.handleMorse = async (mIdx, freq) => {
+      const mod = gameState.modules[mIdx];
+      if (mod.target.freq === freq) {
+        playBeep(720, 0.12);
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await triggerStrike('摩斯頻率錯誤');
+      }
+    };
+
+    window.handleMazeMove = async (mIdx, dx, dy) => {
+      const mod = gameState.modules[mIdx];
+      if (mod.solved) return;
+      const nx = mod.pos.x + dx;
+      const ny = mod.pos.y + dy;
+      if (nx < 0 || nx > 4 || ny < 0 || ny > 4) return;
+
+      const edge1 = `${mod.pos.x},${mod.pos.y}-${nx},${ny}`;
+      const edge2 = `${nx},${ny}-${mod.pos.x},${mod.pos.y}`;
+      if (mod.walls.includes(edge1) || mod.walls.includes(edge2)) {
+        await triggerStrike('迷宮撞牆');
+        return;
+      }
+
+      playBeep(480, 0.05);
+      mod.pos = { x: nx, y: ny };
+      if (nx === mod.goal.x && ny === mod.goal.y) {
+        mod.solved = true;
+        await checkWinCondition();
+      } else {
+        await syncState();
+      }
+    };
+
+    window.handleSimon = async (mIdx, clickedColor) => {
+      const mod = gameState.modules[mIdx];
+      const mapTable = {
+        0: { red: 'blue', blue: 'red', green: 'yellow', yellow: 'green' },
+        1: { red: 'yellow', blue: 'green', green: 'blue', yellow: 'red' },
+        2: { red: 'green', blue: 'yellow', green: 'red', yellow: 'blue' }
+      };
+      const strikesKey = Math.min(gameState.strikes, 2);
+      const flashColor = mod.seq[mod.inputIdx];
+      const expectedColor = mapTable[strikesKey][flashColor];
+
+      if (clickedColor === expectedColor) {
+        playBeep(600 + mod.inputIdx * 80, 0.08);
+        mod.inputIdx += 1;
+        if (mod.inputIdx >= mod.stage) {
+          mod.inputIdx = 0;
+          if (mod.stage >= 3) {
+            mod.solved = true;
+            await checkWinCondition();
+          } else {
+            mod.stage += 1;
+            await syncState();
+          }
+        } else {
+          await syncState();
+        }
+      } else {
+        mod.inputIdx = 0;
+        await triggerStrike('記憶迴路顏色錯誤');
+      }
+    };
+
+    window.leaveRoom = () => {
+      if (unsubscribeRoom) unsubscribeRoom();
+      if (morseAnimFrame) cancelAnimationFrame(morseAnimFrame);
+      clearInterval(timerInterval);
+      clearInterval(valveInterval);
+      location.reload();
+    };
+  </script>
+</body>
+</html>
